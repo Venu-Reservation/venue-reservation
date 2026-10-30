@@ -36,6 +36,10 @@ class Venue(
 	@Column(nullable = false, length = 50)
 	var state: String,
 
+	// IANA zone ID, e.g. America/New_York
+	@Column(nullable = false, length = 64)
+	var timezone: String,
+
 	@Column(name = "hourly_rate", nullable = false, precision = 10, scale = 2)
 	var hourlyRate: BigDecimal,
 
