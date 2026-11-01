@@ -10,10 +10,32 @@ Everything below is specific to this repo.
 
 ## Commands
 
-- Needs JDK 25 (the Gradle toolchain in `build.gradle` requires it) and Docker. README.md has the full setup.
-- `docker compose up -d`: starts the local services from `docker-compose.yaml`. `application.properties` points at them.
-- `./gradlew build`: compiles and runs the tests. The current context-load test starts the app, so the Docker services must be running.
-- `./gradlew bootRun`: runs the API on http://localhost:8080. The web app's `npm run dev` sends its `/api` requests here.
+- Needs JDK 25 (the Gradle toolchain in `build.gradle.kts` requires it) and Docker. README.md has the full setup.
+- `docker compose up -d`: the local Postgres. The `dev` profile (the default) points at it.
+- `./gradlew build`: compiles and runs every test. Tests start their own Postgres with Testcontainers, so Docker must be running; they never touch the local database.
+- `./gradlew test --tests 'com.venue.reservations.ReservationRulesTest'`: one test class. Add `.methodName` (or a backticked test name in quotes) for one test.
+- `./gradlew bootRun`: the API on http://localhost:8080, with the dev seed data loaded. The web app's `npm run dev` sends its `/api` requests here.
+- `docker compose down -v && docker compose up -d`: reset the local database, so the seed loads fresh on the next start.
+
+## Structure
+
+One Gradle project, with one package per module under `com.venue` (see Backend rules in the shared file):
+
+- Each module exposes an interface (`UserService`, `VenueService`, `ReservationService`) with a `Default…Service` implementation. Other modules depend only on the interface and the DTOs next to it.
+- `common`: `ApiException` and its subclasses (thrown for every user-facing error), `ApiExceptionHandler`, `SqlErrors` (SQLState checks), `AppProperties` (`app.*` settings), and `security/` (the filter chain, the JWT encoder and decoder, and `Jwt.userId()`).
+- `auth`: signup, login and token issuing. `users`: profile, plus the `User` entity. `venues`: CRUD, plus the `Venue` and `VenueImage` entities; a venue stores `hostId`, not a `User` relation.
+- `reservations`: JDBC only (`ReservationRepository`), because of the `tstzrange` period. Also holds the shared booking-rule constants and `HoldExpiryJob`.
+- `search`: `/venues/search` and `/venues/{id}/availability`, combining `VenueService` and `ReservationService`.
+- `payments`: the signed webhook, `PaymentService` (idempotent per event id, one transaction per event), and the dev-only `DevPaymentController`.
+
+## Conventions
+
+- Controllers take request DTOs with nullable fields and validate with `validate(condition) { "message" }`, so a missing field gets a clear `VALIDATION_ERROR` message instead of a generic JSON error. Messages are shown to users as they are, and match the web app's.
+- The caller is always `@AuthenticationPrincipal jwt: Jwt` → `jwt.userId()`. Ownership is checked in services: 404 for missing, then 403 for not yours.
+- Services are `@Transactional`. A reservation's effective status comes from `ReservationRow.effectiveStatus(now)`, so a lapsed hold reads as EXPIRED before the job runs.
+- Map database errors by SQLState (`isExclusionViolation`, `isUniqueViolation`) at the place they can happen, never wholesale.
+- Profiles: `dev` (the default; local secrets and the `db/dev` seed), `test` (`src/test/resources/application-test.properties`); anything else needs `DB_PASSWORD`, `JWT_SECRET` and `PAYMENT_WEBHOOK_SECRET`.
+- Tests extend `IntegrationTest`: MockMvc against the real app on a shared Postgres container, with tables truncated before each test and helpers to sign up, create venues, book and expire holds. In MockMvc paths, write spaces as spaces (`city=New York`); the path is a URI template and gets encoded again.
 
 ## Workflow
 
