@@ -1,4 +1,4 @@
-package com.venue.reservation.domain
+package com.venue.users
 
 import jakarta.persistence.Column
 import jakarta.persistence.Entity

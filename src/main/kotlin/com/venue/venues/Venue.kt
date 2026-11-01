@@ -1,4 +1,4 @@
-package com.venue.reservation.domain
+package com.venue.venues
 
 import jakarta.persistence.CascadeType
 import jakarta.persistence.Column
@@ -11,6 +11,7 @@ import jakarta.persistence.JoinColumn
 import jakarta.persistence.ManyToOne
 import jakarta.persistence.OneToMany
 import jakarta.persistence.Table
+import com.venue.users.User
 import java.math.BigDecimal
 import java.time.Instant
 

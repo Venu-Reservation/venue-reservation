@@ -1,4 +1,4 @@
-package com.venue.reservation.domain
+package com.venue.reservations
 
 enum class ReservationStatus {
 	PENDING,
