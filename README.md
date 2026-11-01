@@ -77,7 +77,7 @@ The app needs one service on localhost. The credentials and port in `docker-comp
 
 | Service    | Container        | Host address     | Login |
 |------------|------------------|------------------|-------|
-| PostgreSQL | `local-postgres` | `localhost:5432` | database `appdb`, user `appuser`, password `secretpassword` |
+| PostgreSQL | `reserved-postgres` | `localhost:5432` | database `appdb`, user `appuser`, password `secretpassword` |
 
 Install and launch Docker Desktop:
 
@@ -96,7 +96,7 @@ docker compose up -d --remove-orphans
 
 ```bash
 docker compose ps
-docker exec local-postgres pg_isready -U appuser -d appdb
+docker exec reserved-postgres pg_isready -U appuser -d appdb
 ```
 
 `pg_isready` should say it is accepting connections.
