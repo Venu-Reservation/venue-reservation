@@ -37,6 +37,22 @@ One Gradle project, with one package per module under `com.venue` (see Backend r
 - Profiles: `dev` (the default; local secrets and the `db/dev` seed), `test` (`src/test/resources/application-test.properties`); anything else needs `DB_PASSWORD`, `JWT_SECRET` and `PAYMENT_WEBHOOK_SECRET`.
 - Tests extend `IntegrationTest`: MockMvc against the real app on a shared Postgres container, with tables truncated before each test and helpers to sign up, create venues, book and expire holds. In MockMvc paths, write spaces as spaces (`city=New York`); the path is a URI template and gets encoded again.
 
+## Where things stand (Nov 1, 2026)
+
+Update this section when a step lands, so a new session can pick up from here.
+
+- Phase 1 is complete on `feature/adding_db_flyway`, open as PR 6 (https://github.com/Venu-Reservation/venue-reservation/pull/6), not merged yet. Every endpoint in `docs/project.md` exists. There are 18 Testcontainers tests, including the six required ones, and `./gradlew build` passes.
+- Migrations V1 to V8 are applied to the local database. Never edit them; add V9 and up. The dev seed (`db/dev/R__dev_seed.sql`) is repeatable and dates its bookings from today.
+- The web app (`reserved_frontend`) was checked end to end against this backend. Its next screens are availability, Checkout, Confirmation, My bookings and the Host portal, all against existing endpoints. Backend work comes from what those screens need, and from decisions on the Open items in `docs/project.md` (host cancellation, bookings on deleted venues, a guests filter, `GET /cities`).
+- After a merge to `main`, start new work on a new branch from `main`.
+- One known behaviour: a public endpoint returns 401 when sent a bad or expired token. This is documented, and clients handle it by signing out.
+
+## Working with the user
+
+- The user is the architect, and trains a junior backend developer on this repo. Keep code plain and idiomatic, and explain non-obvious choices (tstzrange, the exclusion constraint, hold expiry) in commit messages or short comments.
+- Ask before product or API decisions. Record the answers in `docs/project.md` and sync it to the web repo.
+- Push and edit PRs only when asked. `gh` is installed and signed in, and `origin` uses SSH.
+
 ## Workflow
 
 - Make small changes, build after each one (`./gradlew build`), and run the tests before saying a task is done.
