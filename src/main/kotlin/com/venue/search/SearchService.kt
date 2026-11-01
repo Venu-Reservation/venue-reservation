@@ -2,6 +2,8 @@ package com.venue.search
 
 import com.venue.common.PageResponse
 import com.venue.common.TimeRange
+import com.venue.reservations.FIRST_START_HOUR
+import com.venue.reservations.LAST_START_HOUR
 import com.venue.reservations.ReservationService
 import com.venue.venues.VenueResponse
 import com.venue.venues.VenueService
@@ -11,10 +13,6 @@ import java.time.Instant
 import java.time.LocalDate
 import java.time.LocalTime
 import java.time.ZoneId
-
-/** Bookable hours each day, in the venue's local time. Matches the shared booking rule. */
-const val FIRST_START_HOUR = 6
-const val LAST_START_HOUR = 23
 
 /**
  * Finds what's available. Combines the venues and reservations modules through
