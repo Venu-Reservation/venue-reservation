@@ -14,7 +14,7 @@ class User(
 	@Column(nullable = false)
 	var name: String,
 
-	// Always stored lowercased; unique case-insensitively (V5).
+	// Always stored lowercased; unique case-insensitively (V1).
 	@Column(nullable = false, unique = true)
 	var email: String,
 

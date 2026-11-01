@@ -42,7 +42,7 @@ One Gradle project, with one package per module under `com.venue` (see Backend r
 Update this section when a step lands, so a new session can pick up from here.
 
 - Phase 1 is complete on `feature/adding_db_flyway`, open as PR 6 (https://github.com/Venu-Reservation/venue-reservation/pull/6), not merged yet. Every endpoint in `docs/project.md` exists. There are 18 Testcontainers tests, including the six required ones, and `./gradlew build` passes.
-- Migrations V1 to V8 are applied to the local database. Never edit them; add V9 and up. The dev seed (`db/dev/R__dev_seed.sql`) is repeatable and dates its bookings from today.
+- Migrations are V1 to V4, one per table (users, venues and images, reservations, payments). They were squashed before anything ran outside local machines; once merged, never edit them and add V5 and up. A local database from before the squash needs `docker compose down -v` once. The dev seed (`db/dev/R__dev_seed.sql`) is repeatable and dates its bookings from today.
 - The web app (`reserved_frontend`) was checked end to end against this backend. Its next screens are availability, Checkout, Confirmation, My bookings and the Host portal, all against existing endpoints. Backend work comes from what those screens need, and from decisions on the Open items in `docs/project.md` (host cancellation, bookings on deleted venues, a guests filter, `GET /cities`).
 - After a merge to `main`, start new work on a new branch from `main`.
 - One known behaviour: a public endpoint returns 401 when sent a bad or expired token. This is documented, and clients handle it by signing out.

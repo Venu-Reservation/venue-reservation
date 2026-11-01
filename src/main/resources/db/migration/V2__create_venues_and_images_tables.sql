@@ -6,9 +6,14 @@ CREATE TABLE venues (
     size_sqft INT,
     city VARCHAR(100) NOT NULL,
     state VARCHAR(50) NOT NULL,
+    -- IANA time zone (e.g. America/New_York). Booking times are stored in UTC;
+    -- clients show and enter them in the venue's zone.
+    timezone VARCHAR(64) NOT NULL,
     hourly_rate DECIMAL(10, 2) NOT NULL,
     thumbnail_url VARCHAR(500),
-    created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP
+    created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    -- Soft delete: every read excludes rows with deleted_at set.
+    deleted_at TIMESTAMP WITH TIME ZONE
 );
 
 CREATE TABLE venue_images (
@@ -19,4 +24,6 @@ CREATE TABLE venue_images (
 );
 
 CREATE INDEX idx_venues_host_id ON venues(host_id);
+-- Search looks venues up by city, case-insensitively, among active ones.
+CREATE INDEX idx_venues_active_city ON venues (lower(city)) WHERE deleted_at IS NULL;
 CREATE INDEX idx_venue_images_venue_id ON venue_images(venue_id);
