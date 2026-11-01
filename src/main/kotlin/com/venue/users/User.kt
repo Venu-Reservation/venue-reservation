@@ -14,8 +14,13 @@ class User(
 	@Column(nullable = false)
 	var name: String,
 
+	// Always stored lowercased; unique case-insensitively (V5).
 	@Column(nullable = false, unique = true)
 	var email: String,
+
+	// BCrypt hash; the password itself is never stored.
+	@Column(name = "password_hash", nullable = false, length = 100)
+	var passwordHash: String,
 
 	@Column(length = 50)
 	var phone: String? = null,

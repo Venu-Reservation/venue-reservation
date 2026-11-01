@@ -3,24 +3,22 @@ package com.venue.venues
 import jakarta.persistence.CascadeType
 import jakarta.persistence.Column
 import jakarta.persistence.Entity
-import jakarta.persistence.FetchType
 import jakarta.persistence.GeneratedValue
 import jakarta.persistence.GenerationType
 import jakarta.persistence.Id
-import jakarta.persistence.JoinColumn
-import jakarta.persistence.ManyToOne
 import jakarta.persistence.OneToMany
+import jakarta.persistence.OrderBy
 import jakarta.persistence.Table
-import com.venue.users.User
 import java.math.BigDecimal
 import java.time.Instant
 
 @Entity
 @Table(name = "venues")
 class Venue(
-	@ManyToOne(fetch = FetchType.LAZY, optional = false)
-	@JoinColumn(name = "host_id", nullable = false)
-	var host: User,
+	// The user who listed the venue. A plain id rather than a User relation,
+	// so the venues module doesn't depend on the users module's entity.
+	@Column(name = "host_id", nullable = false, updatable = false)
+	val hostId: Long,
 
 	@Column(nullable = false)
 	var name: String,
@@ -50,16 +48,28 @@ class Venue(
 	@Column(name = "created_at", nullable = false, updatable = false)
 	val createdAt: Instant = Instant.now(),
 
+	// Set when the venue is removed. Deleted venues are excluded from every read.
+	@Column(name = "deleted_at")
+	var deletedAt: Instant? = null,
+
 	@Id
 	@GeneratedValue(strategy = GenerationType.IDENTITY)
 	val id: Long? = null,
 ) {
 	@OneToMany(mappedBy = "venue", cascade = [CascadeType.ALL], orphanRemoval = true)
+	@OrderBy("displayOrder")
 	val images: MutableList<VenueImage> = mutableListOf()
 
 	fun addImage(image: VenueImage) {
 		images.add(image)
 		image.venue = this
+	}
+
+	/** Replaces all photos; the first URL becomes the thumbnail. */
+	fun replaceImages(imageUrls: List<String>) {
+		images.clear()
+		imageUrls.forEachIndexed { order, url -> addImage(VenueImage(imageUrl = url, displayOrder = order)) }
+		thumbnailUrl = imageUrls.firstOrNull()
 	}
 
 	override fun equals(other: Any?): Boolean {
