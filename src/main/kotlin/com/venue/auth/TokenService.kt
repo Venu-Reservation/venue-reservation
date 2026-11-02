@@ -7,6 +7,7 @@ import org.springframework.security.oauth2.jwt.JwtClaimsSet
 import org.springframework.security.oauth2.jwt.JwtEncoder
 import org.springframework.security.oauth2.jwt.JwtEncoderParameters
 import org.springframework.stereotype.Service
+import java.time.Clock
 import java.time.Instant
 
 /** Issues the bearer tokens clients send back. The subject is the user id. */
@@ -14,9 +15,10 @@ import java.time.Instant
 class TokenService(
 	private val encoder: JwtEncoder,
 	private val properties: AppProperties,
+	private val clock: Clock,
 ) {
 	fun issue(userId: Long): String {
-		val now = Instant.now()
+		val now = Instant.now(clock)
 		val claims = JwtClaimsSet.builder()
 			.subject(userId.toString())
 			.issuedAt(now)

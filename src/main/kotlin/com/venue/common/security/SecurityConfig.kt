@@ -15,6 +15,7 @@ import org.springframework.security.crypto.password.PasswordEncoder
 import org.springframework.security.oauth2.jose.jws.MacAlgorithm
 import org.springframework.security.oauth2.jwt.JwtDecoder
 import org.springframework.security.oauth2.jwt.JwtEncoder
+import org.springframework.security.oauth2.jwt.JwtTimestampValidator
 import org.springframework.security.oauth2.jwt.NimbusJwtDecoder
 import org.springframework.security.oauth2.jwt.NimbusJwtEncoder
 import org.springframework.security.oauth2.server.resource.web.BearerTokenResolver
@@ -25,6 +26,7 @@ import org.springframework.security.web.access.AccessDeniedHandler
 import org.springframework.security.web.servlet.util.matcher.PathPatternRequestMatcher
 import org.springframework.security.web.util.matcher.OrRequestMatcher
 import org.springframework.security.web.util.matcher.RequestMatcher
+import java.time.Clock
 import javax.crypto.SecretKey
 import javax.crypto.spec.SecretKeySpec
 
@@ -33,7 +35,7 @@ import javax.crypto.spec.SecretKeySpec
  * subject is the user id, which is the only way the API learns who is calling.
  */
 @Configuration
-class SecurityConfig(properties: AppProperties) {
+class SecurityConfig(properties: AppProperties, private val clock: Clock) {
 	private val signingKey: SecretKey = run {
 		val secret = properties.jwt.secret
 		require(secret.length >= 32) { "app.jwt.secret must be at least 32 characters" }
@@ -89,8 +91,15 @@ class SecurityConfig(properties: AppProperties) {
 	@Bean
 	fun jwtEncoder(): JwtEncoder = NimbusJwtEncoder.withSecretKey(signingKey).algorithm(MacAlgorithm.HS256).build()
 
+	/**
+	 * Checks the signature, then `exp` and `nbf` against the same [Clock] that
+	 * TokenService issues with (Spring's default validator reads the system time).
+	 */
 	@Bean
-	fun jwtDecoder(): JwtDecoder = NimbusJwtDecoder.withSecretKey(signingKey).macAlgorithm(MacAlgorithm.HS256).build()
+	fun jwtDecoder(): JwtDecoder =
+		NimbusJwtDecoder.withSecretKey(signingKey).macAlgorithm(MacAlgorithm.HS256).build().apply {
+			setJwtValidator(JwtTimestampValidator().apply { setClock(clock) })
+		}
 
 	/**
 	 * Argon2id with OWASP's recommended settings: 19 MiB of memory, 2 iterations,

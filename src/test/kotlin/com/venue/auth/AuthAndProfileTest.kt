@@ -2,6 +2,7 @@ package com.venue.auth
 
 import com.venue.IntegrationTest
 import org.junit.jupiter.api.Test
+import java.time.Duration
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
@@ -53,6 +54,19 @@ class AuthAndProfileTest : IntegrationTest() {
 		val updated = put("/api/v1/users", """{"name":"Alex Morgan","phone":"555-0100"}""", user)
 		assertEquals("Alex Morgan", updated.field("name").asString())
 		assertEquals("555-0100", updated.field("phone").asString())
+	}
+
+	@Test
+	fun `a token works for 7 days, then protected endpoints answer 401`() {
+		val user = signUp("Alex")
+
+		clock.advance(Duration.ofDays(6))
+		assertEquals(200, get("/api/v1/users", user).status)
+
+		clock.advance(Duration.ofDays(2))
+		val expired = get("/api/v1/users", user)
+		assertEquals(401, expired.status)
+		assertEquals("UNAUTHORIZED", expired.field("code").asString())
 	}
 
 	@Test

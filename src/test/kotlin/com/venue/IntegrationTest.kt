@@ -28,7 +28,7 @@ import java.time.ZonedDateTime
 @SpringBootTest
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
-@Import(TestcontainersConfiguration::class)
+@Import(TestcontainersConfiguration::class, TestClockConfiguration::class)
 abstract class IntegrationTest {
 	@Autowired
 	lateinit var mockMvc: MockMvc
@@ -45,12 +45,16 @@ abstract class IntegrationTest {
 	@Autowired
 	lateinit var loginThrottle: LoginThrottle
 
+	@Autowired
+	lateinit var clock: TestClock
+
 	@BeforeEach
 	fun cleanDatabase() {
 		jdbc.execute("truncate payments, reservations, venue_images, venues, users restart identity cascade")
 		// Every test calls signup and login from the same address, so start each with fresh limits.
 		rateLimit.clear()
 		loginThrottle.clear()
+		clock.reset()
 	}
 
 	data class TestUser(val id: Long, val token: String)
