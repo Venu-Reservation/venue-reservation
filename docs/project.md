@@ -244,7 +244,14 @@ To decide:
 - Whether hosts can cancel guests' bookings, and whether hosts can book their own venues (today they can't cancel and can book).
 - What happens to future bookings when a venue is deleted (today they stay).
 - Whether My bookings shows cancelled future bookings under past (today `when=past` includes them).
-- Photo upload storage, Google sign-in, forgot password, email changes, and token refresh (short access tokens plus rotating refresh tokens).
+- Photo upload storage, email changes, and token refresh (short access tokens plus rotating refresh tokens). Add `iss` and `aud` claims to tokens with the refresh work.
+- Sending email, through a provider (e.g. Amazon SES, Postmark, Resend) with SPF, DKIM and DMARC on our domain, and Mailpit in docker-compose for local dev. It unlocks:
+  - Email verification on signup. Signup would answer the same "check your email" whether or not the email is taken, so it no longer reveals which emails have accounts. Today signup's 409 `EMAIL_ALREADY_REGISTERED` does. It also means signup no longer signs you in at once, which reverses that Decision.
+  - Forgot password.
+  - Passkey recovery.
+- Google sign-in, plus Sign in with Apple (the App Store requires it alongside Google). The client sends the provider's ID token to a new endpoint; the backend verifies its signature, `iss` and `aud`, and returns our usual `{ token, user }`. Needs a nullable `password_hash` and a `user_identities (user_id, provider, subject)` table. Link to an existing account with the same email only when the provider says the email is verified.
+- Passkeys (WebAuthn), through a library (Spring Security's WebAuthn4J support or Yubico's `java-webauthn-server`), with a credentials table. iOS needs an `apple-app-site-association` file on a real HTTPS domain. To decide: passkey sign-up or only adding one to an existing account, and recovery when a device is lost.
+- Suggested order for the items above: email, then Google and Apple, then passkeys.
 - Rate limits are counted in memory per server. With several servers, move them to a shared store or the edge (reverse proxy or CDN).
 - The real payment provider and its event format; the webhook shape above is ours for now.
 
