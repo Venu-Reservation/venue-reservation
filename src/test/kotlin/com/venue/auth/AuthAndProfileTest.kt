@@ -54,4 +54,17 @@ class AuthAndProfileTest : IntegrationTest() {
 		assertEquals("Alex Morgan", updated.field("name").asString())
 		assertEquals("555-0100", updated.field("phone").asString())
 	}
+
+	@Test
+	fun `a bad token is ignored on public endpoints but rejected elsewhere`() {
+		val stale = TestUser(id = 0, token = "not-a-valid-token")
+		signUp("Alex", "alex@example.com")
+
+		assertEquals(200, get("/api/v1/venues/search?city=New York", stale).status)
+		assertEquals(200, post("/api/v1/auth/login", """{"email":"alex@example.com","password":"longenough1"}""", stale).status)
+
+		val profile = get("/api/v1/users", stale)
+		assertEquals(401, profile.status)
+		assertEquals("UNAUTHORIZED", profile.field("code").asString())
+	}
 }

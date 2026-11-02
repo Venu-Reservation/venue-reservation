@@ -16,9 +16,14 @@ import org.springframework.security.oauth2.jwt.JwtDecoder
 import org.springframework.security.oauth2.jwt.JwtEncoder
 import org.springframework.security.oauth2.jwt.NimbusJwtDecoder
 import org.springframework.security.oauth2.jwt.NimbusJwtEncoder
+import org.springframework.security.oauth2.server.resource.web.BearerTokenResolver
+import org.springframework.security.oauth2.server.resource.web.DefaultBearerTokenResolver
+import org.springframework.security.web.AuthenticationEntryPoint
 import org.springframework.security.web.SecurityFilterChain
 import org.springframework.security.web.access.AccessDeniedHandler
-import org.springframework.security.web.AuthenticationEntryPoint
+import org.springframework.security.web.servlet.util.matcher.PathPatternRequestMatcher
+import org.springframework.security.web.util.matcher.OrRequestMatcher
+import org.springframework.security.web.util.matcher.RequestMatcher
 import javax.crypto.SecretKey
 import javax.crypto.spec.SecretKeySpec
 
@@ -34,24 +39,41 @@ class SecurityConfig(properties: AppProperties) {
 		SecretKeySpec(secret.toByteArray(), "HmacSHA256")
 	}
 
+	/** Endpoints anyone can call, signed in or not. */
+	private val publicEndpoints: RequestMatcher = PathPatternRequestMatcher.withDefaults().let { paths ->
+		OrRequestMatcher(
+			paths.matcher(HttpMethod.POST, "/api/v1/auth/**"),
+			// Public browsing: search, venue details and availability.
+			// GET /api/v1/venues (your own listings) still needs a token.
+			paths.matcher(HttpMethod.GET, "/api/v1/venues/*"),
+			paths.matcher(HttpMethod.GET, "/api/v1/venues/*/availability"),
+			// The provider authenticates with a body signature, not a token.
+			paths.matcher(HttpMethod.POST, "/api/v1/payments/webhook"),
+			paths.matcher("/actuator/health"),
+			paths.matcher("/error"),
+		)
+	}
+
+	/**
+	 * Reads the Bearer token, except on public endpoints, where it's ignored.
+	 * Otherwise an expired token would turn browsing or signing in into a 401
+	 * until the client noticed and dropped it.
+	 */
+	private val bearerTokens: BearerTokenResolver = DefaultBearerTokenResolver().let { default ->
+		BearerTokenResolver { request -> if (publicEndpoints.matches(request)) null else default.resolve(request) }
+	}
+
 	@Bean
 	fun securityFilterChain(http: HttpSecurity): SecurityFilterChain {
 		http {
 			csrf { disable() }
 			sessionManagement { sessionCreationPolicy = SessionCreationPolicy.STATELESS }
 			authorizeHttpRequests {
-				authorize(HttpMethod.POST, "/api/v1/auth/**", permitAll)
-				// Public browsing: search, venue details and availability.
-				// GET /api/v1/venues (your own listings) still needs a token.
-				authorize(HttpMethod.GET, "/api/v1/venues/*", permitAll)
-				authorize(HttpMethod.GET, "/api/v1/venues/*/availability", permitAll)
-				// The provider authenticates with a body signature, not a token.
-				authorize(HttpMethod.POST, "/api/v1/payments/webhook", permitAll)
-				authorize("/actuator/health", permitAll)
-				authorize("/error", permitAll)
+				authorize(publicEndpoints, permitAll)
 				authorize(anyRequest, authenticated)
 			}
 			oauth2ResourceServer {
+				bearerTokenResolver = bearerTokens
 				jwt { }
 				authenticationEntryPoint = unauthorized
 			}

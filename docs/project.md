@@ -48,7 +48,7 @@ Agreed while building (Oct and Nov 2026). Each one overrides anything older that
 
 Base path `/api/v1`. JSON in and out. Authenticated requests send `Authorization: Bearer <token>`. The user is identified only by the token: never send a user id.
 
-Public (no token): `POST /auth/signup`, `POST /auth/login`, `GET /venues/search`, `GET /venues/{id}`, `GET /venues/{id}/availability`, `POST /payments/webhook` (signed instead). Everything else needs a token. A missing, invalid or expired token is a 401, even on public endpoints if a bad token is sent, so clients drop the token and sign the user out on any 401.
+Public (no token): `POST /auth/signup`, `POST /auth/login`, `GET /venues/search`, `GET /venues/{id}`, `GET /venues/{id}/availability`, `POST /payments/webhook` (signed instead). Everything else needs a token. On those, a missing, invalid or expired token is a 401, so clients drop the token and sign the user out on any 401. Public endpoints ignore the `Authorization` header, so a stale token never breaks browsing or signing in.
 
 ### Errors
 
@@ -243,4 +243,4 @@ To decide:
 
 Clients:
 
-- The web app needs to drop the token on any 401 (an expired token currently breaks public pages too) and build Checkout, Confirmation, My bookings and the Host portal against the endpoints above.
+- The web app needs to drop the token on any 401 and build Checkout, Confirmation, My bookings and the Host portal against the endpoints above.

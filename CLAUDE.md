@@ -45,7 +45,6 @@ Update this section when a step lands, so a new session can pick up from here.
 - Migrations are V1 to V4, one per table (users, venues and images, reservations, payments). They were squashed before anything ran outside local machines; once merged, never edit them and add V5 and up. The dev seed (`db/dev/R__dev_seed.sql`) dates its bookings from the day it runs, and since the database is in memory, every new container gets fresh dates.
 - The web app (`reserved_frontend`) was checked end to end against this backend. Its next screens are availability, Checkout, Confirmation, My bookings and the Host portal, all against existing endpoints. Backend work comes from what those screens need, and from decisions on the Open items in `docs/project.md` (host cancellation, bookings on deleted venues, a guests filter, `GET /cities`).
 - After a merge to `main`, start new work on a new branch from `main`.
-- One known behaviour: a public endpoint returns 401 when sent a bad or expired token. This is documented, and clients handle it by signing out.
 
 ## Working with the user
 
