@@ -101,14 +101,14 @@ docker exec reserved-postgres pg_isready -U appuser -d appdb
 
 `pg_isready` should say it is accepting connections.
 
-Leave the container running while you work. Data is stored in a Docker volume, so it survives a restart.
+Leave the container running while you work. The data lives in memory (`tmpfs`), so **stopping the container deletes it**. That's on purpose: every new container is an empty database, and the app's next start creates the tables and loads fresh seed data, with booking dates relative to that day. Restarting only the app keeps the data.
 
 ```bash
-docker compose stop    # stop the container, keep the data
-docker compose start   # start it again
-docker compose down    # remove the container, keep the data
-docker compose down -v # remove the container and delete the data
+docker compose down     # stop and remove the container (the data goes with it)
+docker compose up -d    # start an empty database; then start the app to fill it
 ```
+
+If the database restarts while the app is running, restart the app too, so it creates the tables again.
 
 Port `5432` already in use means a local Postgres is bound to that port. Quit it, then run `docker compose up -d` again.
 
@@ -173,10 +173,10 @@ On startup, Flyway creates or updates the schema (`src/main/resources/db/migrati
 | Jamie Lee | jamie@dev.local | devpass123 | Yes, the 4 New York venues |
 | Sam Rivera | sam@dev.local | devpass123 | Yes, the Chicago venue |
 
-Bookings are dated relative to the day the seed first runs. For example, Alex has the Atrium booked tomorrow from 6 to 10 PM New York time, so that venue doesn't show in a search for that time. To reload fresh data, wipe the database and start again:
+Bookings are dated relative to the day the seed runs. For example, Alex has the Atrium booked tomorrow from 6 to 10 PM New York time, so that venue doesn't show in a search for that time. To reload fresh data, restart the database and then the app:
 
 ```bash
-docker compose down -v
+docker compose down
 docker compose up -d
 ./gradlew bootRun
 ```
@@ -226,4 +226,4 @@ Secrets come from environment variables outside the `dev` profile: `DB_PASSWORD`
 
 **The container exits immediately or the port is already allocated.** Run `docker compose logs` and look for "address already in use". Free that port, then `docker compose up -d` again.
 
-**Flyway reports a checksum mismatch.** A migration that already ran was edited. Never change an applied migration; add a new one instead. On your own machine, `docker compose down -v` resets the database.
+**Flyway reports a checksum mismatch.** A migration that already ran was edited. Never change an applied migration; add a new one instead. On your own machine, `docker compose down && docker compose up -d` resets the database.

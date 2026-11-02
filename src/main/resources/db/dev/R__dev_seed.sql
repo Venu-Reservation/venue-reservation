@@ -3,8 +3,9 @@
 -- and the same test password for every user: devpass123.
 --
 -- Flyway re-runs this file whenever it changes. Every insert skips rows that
--- already exist, so re-running never duplicates or overwrites data. To start
--- over: docker compose down -v && docker compose up -d, then start the app.
+-- already exist, so re-running never duplicates or overwrites data. The local
+-- database lives in memory (tmpfs in docker-compose.yaml), so to start over
+-- with fresh dates: docker compose down && docker compose up -d, then start the app.
 
 -- Only used here, to hash the test password in SQL. BCrypt "$2a$" hashes from
 -- pgcrypto are accepted by Spring's BCryptPasswordEncoder.

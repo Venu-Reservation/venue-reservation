@@ -9,8 +9,8 @@ services:
       POSTGRES_PASSWORD: secretpassword
     ports:
       - "5432:5432"
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-
-volumes:
-  postgres_data:
+    # Data lives in memory, so every container start is an empty database:
+    # the app's next start runs the migrations and the dev seed, with booking
+    # dates relative to that day. Stopping the container deletes the data.
+    tmpfs:
+      - /var/lib/postgresql/data

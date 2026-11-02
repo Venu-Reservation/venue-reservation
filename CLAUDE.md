@@ -15,7 +15,7 @@ Everything below is specific to this repo.
 - `./gradlew build`: compiles and runs every test. Tests start their own Postgres with Testcontainers, so Docker must be running; they never touch the local database.
 - `./gradlew test --tests 'com.venue.reservations.ReservationRulesTest'`: one test class. Add `.methodName` (or a backticked test name in quotes) for one test.
 - `./gradlew bootRun`: the API on http://localhost:8080, with the dev seed data loaded. The web app's `npm run dev` sends its `/api` requests here.
-- `docker compose down -v && docker compose up -d`: reset the local database, so the seed loads fresh on the next start.
+- `docker compose down && docker compose up -d`: reset the local database. Its data is in memory (`tmpfs`), so a new container is always empty and the app's next start loads the migrations and a fresh seed.
 
 ## Structure
 
@@ -42,7 +42,7 @@ One Gradle project, with one package per module under `com.venue` (see Backend r
 Update this section when a step lands, so a new session can pick up from here.
 
 - Phase 1 is complete on `feature/adding_db_flyway`, open as PR 6 (https://github.com/Venu-Reservation/venue-reservation/pull/6), not merged yet. Every endpoint in `docs/project.md` exists. There are 18 Testcontainers tests, including the six required ones, and `./gradlew build` passes.
-- Migrations are V1 to V4, one per table (users, venues and images, reservations, payments). They were squashed before anything ran outside local machines; once merged, never edit them and add V5 and up. A local database from before the squash needs `docker compose down -v` once. The dev seed (`db/dev/R__dev_seed.sql`) is repeatable and dates its bookings from today.
+- Migrations are V1 to V4, one per table (users, venues and images, reservations, payments). They were squashed before anything ran outside local machines; once merged, never edit them and add V5 and up. The dev seed (`db/dev/R__dev_seed.sql`) dates its bookings from the day it runs, and since the database is in memory, every new container gets fresh dates.
 - The web app (`reserved_frontend`) was checked end to end against this backend. Its next screens are availability, Checkout, Confirmation, My bookings and the Host portal, all against existing endpoints. Backend work comes from what those screens need, and from decisions on the Open items in `docs/project.md` (host cancellation, bookings on deleted venues, a guests filter, `GET /cities`).
 - After a merge to `main`, start new work on a new branch from `main`.
 - One known behaviour: a public endpoint returns 401 when sent a bad or expired token. This is documented, and clients handle it by signing out.
