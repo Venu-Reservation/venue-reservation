@@ -1,5 +1,7 @@
 package com.venue
 
+import com.venue.auth.AuthRateLimitFilter
+import com.venue.auth.LoginThrottle
 import org.junit.jupiter.api.BeforeEach
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
@@ -37,14 +39,23 @@ abstract class IntegrationTest {
 	@Autowired
 	lateinit var jsonMapper: JsonMapper
 
+	@Autowired
+	lateinit var rateLimit: AuthRateLimitFilter
+
+	@Autowired
+	lateinit var loginThrottle: LoginThrottle
+
 	@BeforeEach
 	fun cleanDatabase() {
 		jdbc.execute("truncate payments, reservations, venue_images, venues, users restart identity cascade")
+		// Every test calls signup and login from the same address, so start each with fresh limits.
+		rateLimit.clear()
+		loginThrottle.clear()
 	}
 
 	data class TestUser(val id: Long, val token: String)
 
-	data class Response(val status: Int, val body: JsonNode?) {
+	data class Response(val status: Int, val body: JsonNode?, val headers: Map<String, String> = emptyMap()) {
 		fun field(name: String): JsonNode = body!!.get(name)
 	}
 
@@ -72,9 +83,16 @@ abstract class IntegrationTest {
 
 	fun get(path: String, user: TestUser? = null) = perform(MockMvcRequestBuilders.get(path), user)
 
-	fun post(path: String, body: String, user: TestUser? = null, headers: Map<String, String> = emptyMap()): Response {
+	fun post(
+		path: String,
+		body: String,
+		user: TestUser? = null,
+		headers: Map<String, String> = emptyMap(),
+		remoteAddr: String? = null,
+	): Response {
 		val request = MockMvcRequestBuilders.post(path).contentType(MediaType.APPLICATION_JSON).content(body)
 		headers.forEach { (name, value) -> request.header(name, value) }
+		remoteAddr?.let { address -> request.with { it.apply { this.remoteAddr = address } } }
 		return perform(request, user)
 	}
 
@@ -90,7 +108,8 @@ abstract class IntegrationTest {
 
 	private fun toResponse(result: MvcResult): Response {
 		val content = result.response.contentAsString
-		return Response(result.response.status, if (content.isBlank()) null else jsonMapper.readTree(content))
+		val headers = result.response.headerNames.associateWith { result.response.getHeader(it).orEmpty() }
+		return Response(result.response.status, if (content.isBlank()) null else jsonMapper.readTree(content), headers)
 	}
 
 	/** Pretends a reservation's 10-minute hold ran out. */

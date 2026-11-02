@@ -67,4 +67,49 @@ class AuthAndProfileTest : IntegrationTest() {
 		assertEquals(401, profile.status)
 		assertEquals("UNAUTHORIZED", profile.field("code").asString())
 	}
+
+	@Test
+	fun `passwords can be long but not over 128 characters`() {
+		val long = post("/api/v1/auth/signup", """{"name":"Alex","email":"alex@example.com","password":"${"a".repeat(128)}"}""")
+		assertEquals(201, long.status)
+		val login = post("/api/v1/auth/login", """{"email":"alex@example.com","password":"${"a".repeat(128)}"}""")
+		assertEquals(200, login.status)
+
+		val tooLong = post("/api/v1/auth/signup", """{"name":"Sam","email":"sam@example.com","password":"${"a".repeat(129)}"}""")
+		assertEquals(400, tooLong.status)
+		assertEquals("Password must be 128 characters or fewer.", tooLong.field("message").asString())
+	}
+
+	@Test
+	fun `one IP gets 10 auth requests a minute, then 429 with Retry-After`() {
+		repeat(10) { i ->
+			val attempt = post("/api/v1/auth/login", """{"email":"guess$i@example.com","password":"wrong-password"}""", remoteAddr = "10.0.0.7")
+			assertEquals(401, attempt.status)
+		}
+
+		val blocked = post("/api/v1/auth/login", """{"email":"guess@example.com","password":"wrong-password"}""", remoteAddr = "10.0.0.7")
+		assertEquals(429, blocked.status)
+		assertEquals("TOO_MANY_REQUESTS", blocked.field("code").asString())
+		assertTrue(blocked.headers.getValue("Retry-After").toLong() in 1..60)
+
+		// Another address has its own count.
+		val other = post("/api/v1/auth/login", """{"email":"guess@example.com","password":"wrong-password"}""", remoteAddr = "10.0.0.8")
+		assertEquals(401, other.status)
+	}
+
+	@Test
+	fun `five wrong passwords make the next login for that email wait, even with the right password`() {
+		signUp("Alex", "alex@example.com")
+		repeat(5) {
+			assertEquals(401, post("/api/v1/auth/login", """{"email":"alex@example.com","password":"wrong-password"}""").status)
+		}
+
+		val blocked = post("/api/v1/auth/login", """{"email":"alex@example.com","password":"longenough1"}""")
+		assertEquals(429, blocked.status)
+		assertEquals("1", blocked.headers["Retry-After"])
+
+		// Other accounts aren't affected.
+		signUp("Sam", "sam@example.com")
+		assertEquals(200, post("/api/v1/auth/login", """{"email":"sam@example.com","password":"longenough1"}""").status)
+	}
 }

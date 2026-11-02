@@ -23,7 +23,7 @@ One Gradle project, with one package per module under `com.venue` (see Backend r
 
 - Each module exposes an interface (`UserService`, `VenueService`, `ReservationService`) with a `Default…Service` implementation. Other modules depend only on the interface and the DTOs next to it.
 - `common`: `ApiException` and its subclasses (thrown for every user-facing error), `ApiExceptionHandler`, `SqlErrors` (SQLState checks), `AppProperties` (`app.*` settings), and `security/` (the filter chain, the JWT encoder and decoder, and `Jwt.userId()`).
-- `auth`: signup, login and token issuing. `users`: profile, plus the `User` entity. `venues`: CRUD, plus the `Venue` and `VenueImage` entities; a venue stores `hostId`, not a `User` relation.
+- `auth`: signup, login and token issuing, plus the login limits: `AuthRateLimitFilter` (per IP) and `LoginThrottle` (per email), both in memory. Passwords are Argon2id through `BoundedPasswordEncoder` (in `common/security`), which caps how many hashes run at once. `users`: profile, plus the `User` entity. `venues`: CRUD, plus the `Venue` and `VenueImage` entities; a venue stores `hostId`, not a `User` relation.
 - `reservations`: JDBC only (`ReservationRepository`), because of the `tstzrange` period. Also holds the shared booking-rule constants and `HoldExpiryJob`.
 - `search`: `/venues/search` and `/venues/{id}/availability`, combining `VenueService` and `ReservationService`.
 - `payments`: the signed webhook, `PaymentService` (idempotent per event id, one transaction per event), and the dev-only `DevPaymentController`.

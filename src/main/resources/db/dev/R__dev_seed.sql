@@ -7,10 +7,6 @@
 -- database lives in memory (tmpfs in docker-compose.yaml), so to start over
 -- with fresh dates: docker compose down && docker compose up -d, then start the app.
 
--- Only used here, to hash the test password in SQL. BCrypt "$2a$" hashes from
--- pgcrypto are accepted by Spring's BCryptPasswordEncoder.
-CREATE EXTENSION IF NOT EXISTS pgcrypto;
-
 -- A time on a day relative to today, in a venue's time zone, e.g.
 -- pg_temp.venue_time('America/New_York', 1, 18) is tomorrow 6:00 PM New York time.
 CREATE FUNCTION pg_temp.venue_time(tz TEXT, days INT, hour INT) RETURNS TIMESTAMPTZ
@@ -18,10 +14,12 @@ LANGUAGE sql AS $$
     SELECT (date_trunc('day', now() AT TIME ZONE tz) + make_interval(days => days, hours => hour)) AT TIME ZONE tz
 $$;
 
+-- Every user's password_hash is the same precomputed Argon2id hash of
+-- devpass123 (Postgres can't compute Argon2 itself). Fine for a dev-only password.
 INSERT INTO users (id, name, email, password_hash, created_at) VALUES
-    (1, 'Alex Morgan', 'alex@dev.local', crypt('devpass123', gen_salt('bf', 10)), '2026-08-15T12:00:00Z'),
-    (2, 'Jamie Lee', 'jamie@dev.local', crypt('devpass123', gen_salt('bf', 10)), '2026-08-20T12:00:00Z'),
-    (3, 'Sam Rivera', 'sam@dev.local', crypt('devpass123', gen_salt('bf', 10)), '2026-08-25T12:00:00Z')
+    (1, 'Alex Morgan', 'alex@dev.local', '{argon2}$argon2id$v=19$m=19456,t=2,p=1$s9xmz6NAPBDLydQ/6Q4Z7Q$hK/EBKa9MHFVETh+RDIcdVsWbqTUpjXiUrvfA/l1IaQ', '2026-08-15T12:00:00Z'),
+    (2, 'Jamie Lee', 'jamie@dev.local', '{argon2}$argon2id$v=19$m=19456,t=2,p=1$s9xmz6NAPBDLydQ/6Q4Z7Q$hK/EBKa9MHFVETh+RDIcdVsWbqTUpjXiUrvfA/l1IaQ', '2026-08-20T12:00:00Z'),
+    (3, 'Sam Rivera', 'sam@dev.local', '{argon2}$argon2id$v=19$m=19456,t=2,p=1$s9xmz6NAPBDLydQ/6Q4Z7Q$hK/EBKa9MHFVETh+RDIcdVsWbqTUpjXiUrvfA/l1IaQ', '2026-08-25T12:00:00Z')
 ON CONFLICT DO NOTHING;
 
 -- Jamie hosts the New York venues, Sam hosts Chicago, Alex hosts nothing.

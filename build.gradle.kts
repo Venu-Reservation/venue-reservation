@@ -29,6 +29,9 @@ dependencies {
 	implementation("org.jetbrains.kotlin:kotlin-reflect")
 	implementation("tools.jackson.module:jackson-module-kotlin")
 	implementation("org.flywaydb:flyway-database-postgresql")
+	// Argon2id password hashing (Spring Security's Argon2PasswordEncoder needs it).
+	// Not managed by the Spring Boot BOM, so the version is pinned here.
+	implementation("org.bouncycastle:bcprov-jdk18on:1.86")
 
 	runtimeOnly("org.postgresql:postgresql")
 

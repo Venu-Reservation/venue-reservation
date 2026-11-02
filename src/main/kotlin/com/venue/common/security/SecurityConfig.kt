@@ -1,15 +1,16 @@
 package com.venue.common.security
 
 import com.venue.common.AppProperties
+import com.venue.common.writeError
 import jakarta.servlet.http.HttpServletResponse
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
 import org.springframework.http.HttpMethod
-import org.springframework.http.MediaType
 import org.springframework.security.config.annotation.web.builders.HttpSecurity
 import org.springframework.security.config.annotation.web.invoke
 import org.springframework.security.config.http.SessionCreationPolicy
-import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder
+import org.springframework.security.crypto.argon2.Argon2PasswordEncoder
+import org.springframework.security.crypto.password.DelegatingPasswordEncoder
 import org.springframework.security.crypto.password.PasswordEncoder
 import org.springframework.security.oauth2.jose.jws.MacAlgorithm
 import org.springframework.security.oauth2.jwt.JwtDecoder
@@ -91,24 +92,27 @@ class SecurityConfig(properties: AppProperties) {
 	@Bean
 	fun jwtDecoder(): JwtDecoder = NimbusJwtDecoder.withSecretKey(signingKey).macAlgorithm(MacAlgorithm.HS256).build()
 
+	/**
+	 * Argon2id with OWASP's recommended settings: 19 MiB of memory, 2 iterations,
+	 * 1 thread. Hashes are stored with an `{argon2}` prefix, so a future algorithm
+	 * can be added next to it and old hashes still verify.
+	 */
 	@Bean
-	fun passwordEncoder(): PasswordEncoder = BCryptPasswordEncoder()
+	fun passwordEncoder(): PasswordEncoder = BoundedPasswordEncoder(
+		DelegatingPasswordEncoder(
+			"argon2",
+			mapOf("argon2" to Argon2PasswordEncoder(16, 32, 1, 19 * 1024, 2)),
+		),
+		permits = Runtime.getRuntime().availableProcessors(),
+	)
 
 	// Security errors happen before controllers run, so they're written here
 	// in the same { code, message } shape as ApiExceptionHandler.
 	private val unauthorized = AuthenticationEntryPoint { _, response, _ ->
-		writeError(response, HttpServletResponse.SC_UNAUTHORIZED, "UNAUTHORIZED", "Sign in to continue.")
+		response.writeError(HttpServletResponse.SC_UNAUTHORIZED, "UNAUTHORIZED", "Sign in to continue.")
 	}
 
 	private val forbidden = AccessDeniedHandler { _, response, _ ->
-		writeError(response, HttpServletResponse.SC_FORBIDDEN, "FORBIDDEN", "You don't have access to this.")
-	}
-
-	private fun writeError(response: HttpServletResponse, status: Int, code: String, message: String) {
-		response.status = status
-		response.contentType = MediaType.APPLICATION_JSON_VALUE
-		response.characterEncoding = "UTF-8"
-		// Fixed messages without quotes or backslashes, so no JSON escaping is needed.
-		response.writer.write("""{"code":"$code","message":"$message"}""")
+		response.writeError(HttpServletResponse.SC_FORBIDDEN, "FORBIDDEN", "You don't have access to this.")
 	}
 }

@@ -9,8 +9,8 @@ import org.springframework.stereotype.Service
 
 const val MIN_PASSWORD_LENGTH = 8
 
-// BCrypt only uses the first 72 bytes of a password.
-private const val MAX_PASSWORD_BYTES = 72
+// A cap keeps one request from making the server hash megabytes of input.
+const val MAX_PASSWORD_LENGTH = 128
 private val EMAIL_PATTERN = Regex("""^[^\s@]+@[^\s@]+\.[^\s@]+$""")
 
 @Service
@@ -18,6 +18,7 @@ class AuthService(
 	private val users: UserService,
 	private val passwordEncoder: PasswordEncoder,
 	private val tokens: TokenService,
+	private val throttle: LoginThrottle,
 ) {
 	// Compared against when an email doesn't exist, so a wrong email takes
 	// as long as a wrong password and doesn't reveal which accounts exist.
@@ -35,7 +36,9 @@ class AuthService(
 		validate(cleanPassword.length >= MIN_PASSWORD_LENGTH) {
 			"Password must be at least $MIN_PASSWORD_LENGTH characters."
 		}
-		validate(cleanPassword.toByteArray().size <= MAX_PASSWORD_BYTES) { "Password must be 72 bytes or fewer." }
+		validate(cleanPassword.length <= MAX_PASSWORD_LENGTH) {
+			"Password must be $MAX_PASSWORD_LENGTH characters or fewer."
+		}
 
 		val user = users.create(cleanName, cleanEmail, passwordEncoder.encode(cleanPassword)!!)
 		return session(user)
@@ -45,12 +48,15 @@ class AuthService(
 		val cleanEmail = normalizeEmail(email)
 		val cleanPassword = password.orEmpty()
 		validate(cleanEmail.isNotEmpty() && cleanPassword.isNotEmpty()) { "Email and password are required." }
+		throttle.checkAllowed(cleanEmail)
 
 		val credentials = users.findCredentials(cleanEmail)
 		val matches = passwordEncoder.matches(cleanPassword, credentials?.passwordHash ?: dummyHash)
 		if (credentials == null || !matches) {
+			throttle.recordFailure(cleanEmail)
 			throw UnauthorizedException("INVALID_CREDENTIALS", "Email or password is incorrect.")
 		}
+		throttle.recordSuccess(cleanEmail)
 		return session(users.getProfile(credentials.userId))
 	}
 

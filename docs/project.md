@@ -23,7 +23,7 @@ Agreed while building (Oct and Nov 2026). Each one overrides anything older that
 - Search is by city from a fixed list (see Shared data), each with its zone, so a search time can be converted to UTC before any venue loads. A `GET /cities` endpoint will replace the list later.
 - A booking is a start time on the hour plus a whole number of hours (1 to 12). The design's Guests field is left out until search accepts a guests or capacity filter.
 - Search lives at `GET /venues/search` and returns a page object (`items`, `page`, `size`, `totalItems`, `totalPages`); pages are zero-based.
-- Signup returns the same `{ token, user }` as login, so new users are signed in at once. Passwords need at least 8 characters, with no other complexity rules. Tokens are HS256 JWTs whose subject is the user id, valid for 7 days, with no refresh yet.
+- Signup returns the same `{ token, user }` as login, so new users are signed in at once. Passwords need 8 to 128 characters, with no other complexity rules. Tokens are HS256 JWTs whose subject is the user id, valid for 7 days, with no refresh yet.
 - Venue photos are image URLs until file storage exists (MinIO is deferred). The first URL is the thumbnail.
 - `GET /venues/{id}/availability` gives hourly slots for one day, for the "Live availability" grid on Venue details.
 - Until a payment provider is chosen, the dev profile has `POST /reservations/{id}/pay` to pay your own pending booking; it goes through the same logic as the webhook.
@@ -32,7 +32,7 @@ Agreed while building (Oct and Nov 2026). Each one overrides anything older that
 
 ## Domain rules
 
-- Users: one `users` table, no roles. Passwords are stored only as a BCrypt hash. Emails are stored lowercased and unique case-insensitively.
+- Users: one `users` table, no roles. Passwords are stored only as an Argon2id hash. Emails are stored lowercased and unique case-insensitively.
 - Venues: owned by the user in `host_id`, soft-deleted via `deleted_at`; all reads exclude deleted venues. Each has an IANA `timezone`.
 - Reservation statuses: PENDING, CONFIRMED, CANCELLED, EXPIRED.
 - A reservation starts PENDING with `expires_at = now + 10 minutes`, waiting on payment.
@@ -66,6 +66,7 @@ Every error is `{ "code": "...", "message": "..." }`, where `message` is safe to
 | 409 | `EMAIL_ALREADY_REGISTERED` | Signup with a taken email |
 | 409 | `RESERVATION_CONFLICT` | The hours overlap an active booking |
 | 409 | `RESERVATION_NOT_CANCELLABLE` | Cancelling an expired or already started booking |
+| 429 | `TOO_MANY_REQUESTS` | Too many sign-in or sign-up attempts; the `Retry-After` header says how many seconds to wait |
 | 500 | `INTERNAL_ERROR` | Unexpected server error |
 
 Only Postgres SQLState 23P01 (exclusion violation) maps to `RESERVATION_CONFLICT`.
@@ -82,6 +83,11 @@ Only Postgres SQLState 23P01 (exclusion violation) maps to `RESERVATION_CONFLICT
 ```
 
 `hasListings` is true when the user hosts at least one non-deleted venue. Emails are compared case-insensitively.
+
+Both endpoints are rate limited, and over a limit return 429 `TOO_MANY_REQUESTS` with a `Retry-After` header (seconds):
+
+- Per client IP: 10 requests a minute across signup and login.
+- Per email: after 5 wrong passwords in a row, each further login attempt for that email must wait 1, 2, 4… seconds, up to 5 minutes. A correct login, or 15 minutes without a failure, resets it. Delays instead of a hard lockout, so nobody can lock a real user out.
 
 ### Users
 
@@ -186,7 +192,7 @@ Supported cities (until `GET /cities` exists):
 | Field | Rule |
 |---|---|
 | Name (user) | 1 to 255 characters |
-| Password | At least 8 characters (and at most 72 bytes, a BCrypt limit) |
+| Password | 8 to 128 characters |
 | Email | Trimmed, lowercased, `something@domain.tld` |
 | Venue name | 1 to 255 characters |
 | Capacity, size (sq ft) | Whole number, at least 1 (size optional) |
@@ -238,7 +244,8 @@ To decide:
 - Whether hosts can cancel guests' bookings, and whether hosts can book their own venues (today they can't cancel and can book).
 - What happens to future bookings when a venue is deleted (today they stay).
 - Whether My bookings shows cancelled future bookings under past (today `when=past` includes them).
-- Photo upload storage, Google sign-in, forgot password, email changes, and token refresh.
+- Photo upload storage, Google sign-in, forgot password, email changes, and token refresh (short access tokens plus rotating refresh tokens).
+- Rate limits are counted in memory per server. With several servers, move them to a shared store or the edge (reverse proxy or CDN).
 - The real payment provider and its event format; the webhook shape above is ours for now.
 
 Clients:

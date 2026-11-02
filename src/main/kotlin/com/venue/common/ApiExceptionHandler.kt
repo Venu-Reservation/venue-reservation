@@ -1,6 +1,7 @@
 package com.venue.common
 
 import org.slf4j.LoggerFactory
+import org.springframework.http.HttpHeaders
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
 import org.springframework.http.converter.HttpMessageNotReadableException
@@ -18,6 +19,12 @@ class ApiExceptionHandler {
 
 	@ExceptionHandler(ApiException::class)
 	fun handleApi(e: ApiException) = error(e.status, e.code, e.message ?: "")
+
+	@ExceptionHandler(TooManyRequestsException::class)
+	fun handleTooManyRequests(e: TooManyRequestsException): ResponseEntity<ErrorResponse> =
+		ResponseEntity.status(e.status)
+			.header(HttpHeaders.RETRY_AFTER, e.retryAfterSeconds.toString())
+			.body(ErrorResponse(e.code, e.message ?: ""))
 
 	@ExceptionHandler(HttpMessageNotReadableException::class)
 	fun handleUnreadable(e: HttpMessageNotReadableException) =
