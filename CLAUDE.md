@@ -33,9 +33,10 @@ One Gradle project, with one package per module under `com.venue` (see Backend r
 - Controllers take request DTOs with nullable fields and validate with `validate(condition) { "message" }`, so a missing field gets a clear `VALIDATION_ERROR` message instead of a generic JSON error. Messages are shown to users as they are, and match the web app's.
 - The caller is always `@AuthenticationPrincipal jwt: Jwt` → `jwt.userId()`. Ownership is checked in services: 404 for missing, then 403 for not yours.
 - Services are `@Transactional`. A reservation's effective status comes from `ReservationRow.effectiveStatus(now)`, so a lapsed hold reads as EXPIRED before the job runs.
+- Read the time only from the injected `Clock` (`Instant.now(clock)`), never `Instant.now()` or SQL `now()`; repository queries take `now` as a parameter. Entity `createdAt` defaults are the one exception. Servers rely on NTP to agree on the time.
 - Map database errors by SQLState (`isExclusionViolation`, `isUniqueViolation`) at the place they can happen, never wholesale.
 - Profiles: `dev` (the default; local secrets and the `db/dev` seed), `test` (`src/test/resources/application-test.properties`); anything else needs `DB_PASSWORD`, `JWT_SECRET` and `PAYMENT_WEBHOOK_SECRET`.
-- Tests extend `IntegrationTest`: MockMvc against the real app on a shared Postgres container, with tables truncated before each test and helpers to sign up, create venues, book and expire holds. In MockMvc paths, write spaces as spaces (`city=New York`); the path is a URI template and gets encoded again.
+- Tests extend `IntegrationTest`: MockMvc against the real app on a shared Postgres container, with tables truncated before each test and helpers to sign up, create venues and book. `clock.advance(...)` (`TestClock`) moves time for the whole app, e.g. past a hold or a token's expiry. In MockMvc paths, write spaces as spaces (`city=New York`); the path is a URI template and gets encoded again.
 
 ## Where things stand (Nov 1, 2026)
 

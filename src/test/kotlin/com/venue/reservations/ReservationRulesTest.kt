@@ -2,6 +2,7 @@ package com.venue.reservations
 
 import com.venue.IntegrationTest
 import org.junit.jupiter.api.Test
+import java.time.Duration
 import java.util.concurrent.Callable
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
@@ -65,8 +66,10 @@ class ReservationRulesTest : IntegrationTest() {
 		assertEquals(201, hold.status)
 		assertEquals(0, searchCount(slot), "an active hold blocks the venue")
 
-		expireHold(hold.field("id").asLong())
+		clock.advance(Duration.ofMinutes(9))
+		assertEquals(0, searchCount(slot), "the hold still blocks after 9 minutes")
 
+		clock.advance(Duration.ofMinutes(2))
 		assertEquals(1, searchCount(slot), "an expired hold doesn't block search")
 		assertEquals(201, reserve(secondGuest, venueId, slot).status, "an expired hold doesn't block booking")
 	}
@@ -77,7 +80,7 @@ class ReservationRulesTest : IntegrationTest() {
 		val guest = signUp("Guest")
 		val venueId = createVenue(host, rate = "100")
 		val reservationId = reserve(guest, venueId, slot(daysAhead = 3, hour = 18, hours = 2)).field("id").asLong()
-		expireHold(reservationId)
+		clock.advance(HOLD_DURATION + Duration.ofSeconds(1))
 
 		val receipt = webhook(eventId = "evt-late", reservationId = reservationId, amount = "200.00")
 

@@ -9,6 +9,7 @@ import org.springframework.http.HttpHeaders
 import org.springframework.scheduling.annotation.Scheduled
 import org.springframework.stereotype.Component
 import org.springframework.web.filter.OncePerRequestFilter
+import java.time.Clock
 import java.time.Duration
 import java.time.Instant
 import java.util.concurrent.ConcurrentHashMap
@@ -22,14 +23,14 @@ import java.util.concurrent.ConcurrentHashMap
  * server.forward-headers-strategy=native there so it's the client's.
  */
 @Component
-class AuthRateLimitFilter : OncePerRequestFilter() {
+class AuthRateLimitFilter(private val clock: Clock) : OncePerRequestFilter() {
 	private val windows = ConcurrentHashMap<String, Window>()
 
 	override fun shouldNotFilter(request: HttpServletRequest): Boolean =
 		request.method != "POST" || !request.requestURI.startsWith("/api/v1/auth/")
 
 	override fun doFilterInternal(request: HttpServletRequest, response: HttpServletResponse, chain: FilterChain) {
-		val now = Instant.now()
+		val now = Instant.now(clock)
 		// compute() updates one IP's entry atomically, even with parallel requests.
 		val window = windows.compute(request.remoteAddr) { _, current ->
 			if (current == null || current.isOver(now)) Window(start = now, count = 1) else current.copy(count = current.count + 1)
@@ -46,7 +47,7 @@ class AuthRateLimitFilter : OncePerRequestFilter() {
 	/** Drops finished windows, so the map doesn't keep every IP ever seen. */
 	@Scheduled(fixedDelayString = "PT5M")
 	fun forgetFinishedWindows() {
-		val now = Instant.now()
+		val now = Instant.now(clock)
 		windows.values.removeIf { it.isOver(now) }
 	}
 

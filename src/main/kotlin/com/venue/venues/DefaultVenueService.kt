@@ -7,10 +7,14 @@ import org.springframework.data.domain.PageRequest
 import org.springframework.data.domain.Sort
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
+import java.time.Clock
 import java.time.Instant
 
 @Service
-class DefaultVenueService(private val venues: VenueRepository) : VenueService {
+class DefaultVenueService(
+	private val venues: VenueRepository,
+	private val clock: Clock,
+) : VenueService {
 
 	@Transactional(readOnly = true)
 	override fun hostsAnyVenue(userId: Long): Boolean = venues.existsByHostIdAndDeletedAtIsNull(userId)
@@ -47,7 +51,7 @@ class DefaultVenueService(private val venues: VenueRepository) : VenueService {
 
 	@Transactional
 	override fun delete(userId: Long, venueId: Long) {
-		findOwned(userId, venueId).deletedAt = Instant.now()
+		findOwned(userId, venueId).deletedAt = Instant.now(clock)
 	}
 
 	@Transactional(readOnly = true)

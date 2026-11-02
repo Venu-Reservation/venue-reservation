@@ -6,7 +6,6 @@ import org.springframework.jdbc.core.RowMapper
 import org.springframework.stereotype.Repository
 import java.math.BigDecimal
 import java.sql.ResultSet
-import java.time.Duration
 import java.time.Instant
 import java.time.OffsetDateTime
 import java.time.ZoneOffset
@@ -14,11 +13,14 @@ import java.time.ZoneOffset
 /**
  * Reservations are read and written with SQL rather than JPA, because the
  * period is a Postgres tstzrange. Ranges are always half-open, '[)'.
+ *
+ * Queries never call Postgres's now(). The service passes [now] from the app's
+ * Clock, so Java and SQL agree on the time and tests can move it.
  */
 @Repository
 class ReservationRepository(private val jdbc: JdbcTemplate) {
 
-	fun venuesBookedDuring(range: TimeRange): Set<Long> = jdbc.query(
+	fun venuesBookedDuring(range: TimeRange, now: Instant): Set<Long> = jdbc.query(
 		"""
 		select distinct venue_id from reservations
 		where period && tstzrange(?, ?, '[)') and $BLOCKING
@@ -26,9 +28,10 @@ class ReservationRepository(private val jdbc: JdbcTemplate) {
 		{ rs, _ -> rs.getLong("venue_id") },
 		range.start.toDb(),
 		range.end.toDb(),
+		now.toDb(),
 	).toSet()
 
-	fun bookedPeriods(venueId: Long, range: TimeRange): List<TimeRange> = jdbc.query(
+	fun bookedPeriods(venueId: Long, range: TimeRange, now: Instant): List<TimeRange> = jdbc.query(
 		"""
 		select lower(period) as start_time, upper(period) as end_time from reservations
 		where venue_id = ? and period && tstzrange(?, ?, '[)') and $BLOCKING
@@ -38,17 +41,18 @@ class ReservationRepository(private val jdbc: JdbcTemplate) {
 		venueId,
 		range.start.toDb(),
 		range.end.toDb(),
+		now.toDb(),
 	)
 
 	/**
 	 * Inserts a PENDING hold. Throws if it overlaps another active reservation
 	 * (SQLState 23P01 from the exclusion constraint).
 	 */
-	fun insertHold(venueId: Long, renterId: Long, range: TimeRange, totalPrice: BigDecimal, hold: Duration): Long =
+	fun insertHold(venueId: Long, renterId: Long, range: TimeRange, totalPrice: BigDecimal, expiresAt: Instant): Long =
 		jdbc.queryForObject(
 			"""
 			insert into reservations (venue_id, renter_id, period, total_price, status, expires_at)
-			values (?, ?, tstzrange(?, ?, '[)'), ?, 'PENDING', now() + make_interval(secs => ?))
+			values (?, ?, tstzrange(?, ?, '[)'), ?, 'PENDING', ?)
 			returning id
 			""",
 			Long::class.java,
@@ -57,7 +61,7 @@ class ReservationRepository(private val jdbc: JdbcTemplate) {
 			range.start.toDb(),
 			range.end.toDb(),
 			totalPrice,
-			hold.seconds.toDouble(),
+			expiresAt.toDb(),
 		)!!
 
 	fun find(id: Long): ReservationRow? = jdbc.query("$SELECT where id = ?", ROW, id).firstOrNull()
@@ -65,13 +69,16 @@ class ReservationRepository(private val jdbc: JdbcTemplate) {
 	/** Like [find], but locks the row until the transaction ends. */
 	fun findForUpdate(id: Long): ReservationRow? = jdbc.query("$SELECT where id = ? for update", ROW, id).firstOrNull()
 
-	fun findByRenter(renterId: Long, period: ListPeriod?): List<ReservationRow> =
-		jdbc.query("$SELECT where renter_id = ? ${filter(period)}", ROW, renterId)
+	fun findByRenter(renterId: Long, period: ListPeriod?, now: Instant): List<ReservationRow> {
+		val filter = filter(period, now)
+		return jdbc.query("$SELECT where renter_id = ? ${filter.sql}", ROW, renterId, *filter.args)
+	}
 
-	fun findByVenues(venueIds: Collection<Long>, period: ListPeriod?): List<ReservationRow> {
+	fun findByVenues(venueIds: Collection<Long>, period: ListPeriod?, now: Instant): List<ReservationRow> {
 		if (venueIds.isEmpty()) return emptyList()
 		val placeholders = venueIds.joinToString(",") { "?" }
-		return jdbc.query("$SELECT where venue_id in ($placeholders) ${filter(period)}", ROW, *venueIds.toTypedArray())
+		val filter = filter(period, now)
+		return jdbc.query("$SELECT where venue_id in ($placeholders) ${filter.sql}", ROW, *venueIds.toTypedArray(), *filter.args)
 	}
 
 	/** Moves a reservation out of PENDING; only PENDING ones keep an expiry time. */
@@ -80,26 +87,30 @@ class ReservationRepository(private val jdbc: JdbcTemplate) {
 		jdbc.update("update reservations set status = ?, expires_at = null where id = ?", status.name, id)
 	}
 
-	/** Marks lapsed holds EXPIRED, for one venue or (with null) all of them. */
-	fun expireStaleHolds(venueId: Long?): Int =
+	/** Marks holds that lapsed by [now] EXPIRED, for one venue or (with null) all of them. */
+	fun expireStaleHolds(venueId: Long?, now: Instant): Int =
 		if (venueId == null) {
-			jdbc.update("update reservations set status = 'EXPIRED' where status = 'PENDING' and expires_at <= now()")
+			jdbc.update("update reservations set status = 'EXPIRED' where status = 'PENDING' and expires_at <= ?", now.toDb())
 		} else {
 			jdbc.update(
-				"update reservations set status = 'EXPIRED' where venue_id = ? and status = 'PENDING' and expires_at <= now()",
+				"update reservations set status = 'EXPIRED' where venue_id = ? and status = 'PENDING' and expires_at <= ?",
 				venueId,
+				now.toDb(),
 			)
 		}
 
-	private fun filter(period: ListPeriod?): String = when (period) {
-		ListPeriod.UPCOMING -> "and upper(period) > now() and $BLOCKING order by lower(period)"
-		ListPeriod.PAST -> "and not (upper(period) > now() and $BLOCKING) order by lower(period) desc"
-		null -> "order by lower(period) desc"
+	/** The `when=` filter and ordering, with the values for its placeholders. */
+	private fun filter(period: ListPeriod?, now: Instant): Filter = when (period) {
+		ListPeriod.UPCOMING -> Filter("and upper(period) > ? and $BLOCKING order by lower(period)", now.toDb(), now.toDb())
+		ListPeriod.PAST -> Filter("and not (upper(period) > ? and $BLOCKING) order by lower(period) desc", now.toDb(), now.toDb())
+		null -> Filter("order by lower(period) desc")
 	}
 
+	private class Filter(val sql: String, vararg val args: Any)
+
 	companion object {
-		/** SQL condition for reservations that make a venue unavailable. */
-		const val BLOCKING = "(status = 'CONFIRMED' or (status = 'PENDING' and expires_at > now()))"
+		/** SQL condition for reservations that make a venue unavailable. Its one placeholder is now. */
+		const val BLOCKING = "(status = 'CONFIRMED' or (status = 'PENDING' and expires_at > ?))"
 
 		private const val SELECT = """
 			select id, venue_id, renter_id, lower(period) as start_time, upper(period) as end_time,

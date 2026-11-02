@@ -12,6 +12,7 @@ import org.springframework.dao.DataIntegrityViolationException
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import java.math.BigDecimal
+import java.time.Clock
 import java.time.Duration
 import java.time.Instant
 import java.time.ZoneId
@@ -22,26 +23,29 @@ class DefaultReservationService(
 	private val reservations: ReservationRepository,
 	private val venues: VenueService,
 	private val users: UserService,
+	private val clock: Clock,
 ) : ReservationService {
 
 	@Transactional(readOnly = true)
-	override fun venuesBookedDuring(range: TimeRange): Set<Long> = reservations.venuesBookedDuring(range)
+	override fun venuesBookedDuring(range: TimeRange): Set<Long> =
+		reservations.venuesBookedDuring(range, Instant.now(clock))
 
 	@Transactional(readOnly = true)
 	override fun bookedPeriods(venueId: Long, range: TimeRange): List<TimeRange> =
-		reservations.bookedPeriods(venueId, range)
+		reservations.bookedPeriods(venueId, range, Instant.now(clock))
 
 	@Transactional
 	override fun reserve(userId: Long, venueId: Long, range: TimeRange): ReservationResponse {
+		val now = Instant.now(clock)
 		val venue = venues.getBookingInfo(venueId)
-		val hours = validateBooking(range, ZoneId.of(venue.timezone))
+		val hours = validateBooking(range, ZoneId.of(venue.timezone), now)
 		val totalPrice = venue.hourlyRate.multiply(BigDecimal.valueOf(hours))
 
-		// The exclusion constraint can't compare against now(), so lapsed holds
+		// The exclusion constraint can't compare against the time, so lapsed holds
 		// still count until they're marked EXPIRED. Clear this venue's first.
-		reservations.expireStaleHolds(venueId)
+		reservations.expireStaleHolds(venueId, now)
 		val id = try {
-			reservations.insertHold(venueId, userId, range, totalPrice, HOLD_DURATION)
+			reservations.insertHold(venueId, userId, range, totalPrice, expiresAt = now + HOLD_DURATION)
 		} catch (e: DataIntegrityViolationException) {
 			// Only an exclusion violation (23P01) means "already booked".
 			if (!isExclusionViolation(e)) throw e
@@ -62,18 +66,18 @@ class DefaultReservationService(
 
 	@Transactional(readOnly = true)
 	override fun listForRenter(userId: Long, period: ListPeriod?): List<ReservationResponse> =
-		toResponses(reservations.findByRenter(userId, period))
+		toResponses(reservations.findByRenter(userId, period, Instant.now(clock)))
 
 	@Transactional(readOnly = true)
 	override fun listForHost(userId: Long, period: ListPeriod?): List<ReservationResponse> =
-		toResponses(reservations.findByVenues(venues.findIdsHostedBy(userId), period))
+		toResponses(reservations.findByVenues(venues.findIdsHostedBy(userId), period, Instant.now(clock)))
 
 	@Transactional
 	override fun cancel(userId: Long, reservationId: Long): ReservationResponse {
 		val row = reservations.findForUpdate(reservationId) ?: throw notFound()
 		if (row.renterId != userId) throw ForbiddenException("Only the guest who booked can cancel this reservation.")
 
-		val now = Instant.now()
+		val now = Instant.now(clock)
 		when (row.effectiveStatus(now)) {
 			ReservationStatus.CANCELLED -> {}
 			ReservationStatus.EXPIRED -> throw notCancellable("This hold has already expired.")
@@ -86,13 +90,13 @@ class DefaultReservationService(
 	}
 
 	@Transactional
-	override fun expireStaleHolds(): Int = reservations.expireStaleHolds(venueId = null)
+	override fun expireStaleHolds(): Int = reservations.expireStaleHolds(venueId = null, Instant.now(clock))
 
 	@Transactional
 	override fun applyPayment(reservationId: Long, amount: BigDecimal): PaymentResult {
 		// Locked so a cancel or a second payment can't interleave with this one.
 		val row = reservations.findForUpdate(reservationId) ?: throw notFound()
-		val status = row.effectiveStatus(Instant.now())
+		val status = row.effectiveStatus(Instant.now(clock))
 
 		if (status == ReservationStatus.PENDING && amount.compareTo(row.totalPrice) == 0) {
 			reservations.updateStatus(row.id, ReservationStatus.CONFIRMED)
@@ -113,9 +117,9 @@ class DefaultReservationService(
 	}
 
 	/** Checks the shared booking rules in the venue's zone and returns the number of hours. */
-	private fun validateBooking(range: TimeRange, zone: ZoneId): Long {
+	private fun validateBooking(range: TimeRange, zone: ZoneId, now: Instant): Long {
 		val localStart = range.start.atZone(zone)
-		validate(range.start > Instant.now()) { "Pick a time in the future." }
+		validate(range.start > now) { "Pick a time in the future." }
 		validate(localStart.minute == 0 && localStart.second == 0 && localStart.nano == 0) {
 			"Bookings start on the hour."
 		}
@@ -137,7 +141,7 @@ class DefaultReservationService(
 		if (rows.isEmpty()) return emptyList()
 		val venueSummaries = venues.findSummaries(rows.map { it.venueId }.toSet())
 		val renterNames = users.findNames(rows.map { it.renterId }.toSet())
-		val now = Instant.now()
+		val now = Instant.now(clock)
 		return rows.map { row ->
 			val venue = venueSummaries.getValue(row.venueId)
 			val status = row.effectiveStatus(now)

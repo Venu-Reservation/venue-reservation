@@ -11,8 +11,8 @@ import java.time.ZoneOffset
 
 /**
  * The real time plus an offset a test can move forward, e.g. `clock.advance(Duration.ofDays(8))`.
- * IntegrationTest resets it before each test. Only code that reads the injected Clock
- * sees the offset; Postgres's own now() never does.
+ * IntegrationTest resets it before each test. The app reads every "now" from this
+ * Clock, in SQL too, so moving it moves time for the whole app.
  */
 class TestClock : Clock() {
 	@Volatile

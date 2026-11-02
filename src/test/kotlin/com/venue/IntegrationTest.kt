@@ -116,11 +116,6 @@ abstract class IntegrationTest {
 		return Response(result.response.status, if (content.isBlank()) null else jsonMapper.readTree(content), headers)
 	}
 
-	/** Pretends a reservation's 10-minute hold ran out. */
-	fun expireHold(reservationId: Long) {
-		jdbc.update("update reservations set expires_at = now() - interval '1 second' where id = ?", reservationId)
-	}
-
 	/** A booking window [start, end) in UTC, built from a local time at a venue. */
 	data class Slot(val start: java.time.Instant, val end: java.time.Instant)
 

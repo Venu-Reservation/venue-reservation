@@ -3,6 +3,7 @@ package com.venue.auth
 import com.venue.common.TooManyRequestsException
 import org.springframework.scheduling.annotation.Scheduled
 import org.springframework.stereotype.Component
+import java.time.Clock
 import java.time.Duration
 import java.time.Instant
 import java.util.concurrent.ConcurrentHashMap
@@ -16,18 +17,18 @@ import java.util.concurrent.ConcurrentHashMap
  * accounts exist. Counts live in memory, per server.
  */
 @Component
-class LoginThrottle {
+class LoginThrottle(private val clock: Clock) {
 	private val failures = ConcurrentHashMap<String, Failures>()
 
 	/** Throws TOO_MANY_REQUESTS if [email] must still wait after earlier failures. */
 	fun checkAllowed(email: String) {
 		val entry = failures[email] ?: return
-		val now = Instant.now()
+		val now = Instant.now(clock)
 		if (now.isBefore(entry.nextAttemptAt)) throw TooManyRequestsException(Duration.between(now, entry.nextAttemptAt))
 	}
 
 	fun recordFailure(email: String) {
-		val now = Instant.now()
+		val now = Instant.now(clock)
 		failures.compute(email) { _, current ->
 			val count = if (current == null || current.isStale(now)) 1 else current.count + 1
 			Failures(count = count, lastFailureAt = now, nextAttemptAt = now + delayAfter(count))
@@ -41,7 +42,7 @@ class LoginThrottle {
 	/** Drops accounts with no failure in [RESET_AFTER]. */
 	@Scheduled(fixedDelayString = "PT5M")
 	fun forgetOldFailures() {
-		val now = Instant.now()
+		val now = Instant.now(clock)
 		failures.values.removeIf { it.isStale(now) }
 	}
 
