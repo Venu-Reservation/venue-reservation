@@ -139,10 +139,7 @@ class ReservationRulesTest : IntegrationTest() {
 		val stranger = signUp("Stranger")
 		val venueId = createVenue(host)
 		val reservationId = reserve(guest, venueId, slot(daysAhead = 3, hour = 18)).field("id").asLong()
-		val venueBody = """
-			{"name":"Taken Over","capacity":5,"city":"New York","state":"NY",
-			"timezone":"America/New_York","hourlyRate":1,"imageUrls":[]}
-		"""
+		val venueBody = venueJson(name = "Taken Over")
 
 		assertEquals(403, put("/api/v1/venues/$venueId", venueBody, stranger).status)
 		assertEquals(403, delete("/api/v1/venues/$venueId", stranger).status)

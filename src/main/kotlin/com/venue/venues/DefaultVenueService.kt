@@ -3,10 +3,12 @@ package com.venue.venues
 import com.venue.common.ForbiddenException
 import com.venue.common.NotFoundException
 import com.venue.common.PageResponse
+import com.venue.common.validate
 import org.springframework.data.domain.PageRequest
 import org.springframework.data.domain.Sort
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
+import java.math.BigDecimal
 import java.time.Clock
 import java.time.Instant
 
@@ -20,15 +22,19 @@ class DefaultVenueService(
 	override fun hostsAnyVenue(userId: Long): Boolean = venues.existsByHostIdAndDeletedAtIsNull(userId)
 
 	@Transactional
-	override fun create(hostId: Long, input: VenueInput): VenueResponse {
+	override fun create(hostId: Long, request: VenueRequest): VenueResponse {
+		val input = request.validated()
 		val venue = Venue(
 			hostId = hostId,
 			name = input.name,
 			capacity = input.capacity,
 			sizeSqft = input.sizeSqft,
-			city = input.city,
-			state = input.state,
-			timezone = input.timezone,
+			addressLine1 = input.addressLine1,
+			addressLine2 = input.addressLine2,
+			city = input.city.displayName,
+			state = input.city.state,
+			postalCode = input.postalCode,
+			timezone = input.city.timezone,
 			hourlyRate = input.hourlyRate,
 		)
 		venue.replaceImages(input.imageUrls)
@@ -36,16 +42,27 @@ class DefaultVenueService(
 	}
 
 	@Transactional
-	override fun update(userId: Long, venueId: Long, input: VenueInput): VenueResponse {
+	override fun update(userId: Long, venueId: Long, request: VenueRequest): VenueResponse {
 		val venue = findOwned(userId, venueId)
+		val input = request.validated()
+		val addressChanged = input.addressLine1 != venue.addressLine1 || input.addressLine2 != venue.addressLine2 ||
+			input.city.displayName != venue.city || input.postalCode != venue.postalCode
 		venue.name = input.name
 		venue.capacity = input.capacity
 		venue.sizeSqft = input.sizeSqft
-		venue.city = input.city
-		venue.state = input.state
-		venue.timezone = input.timezone
+		venue.addressLine1 = input.addressLine1
+		venue.addressLine2 = input.addressLine2
+		venue.city = input.city.displayName
+		venue.state = input.city.state
+		venue.postalCode = input.postalCode
+		venue.timezone = input.city.timezone
 		venue.hourlyRate = input.hourlyRate
 		venue.replaceImages(input.imageUrls)
+		// Coordinates belong to the old address; geocoding (later) fills them in again.
+		if (addressChanged) {
+			venue.latitude = null
+			venue.longitude = null
+		}
 		return venues.saveAndFlush(venue).toResponse()
 	}
 
@@ -111,12 +128,69 @@ class DefaultVenueService(
 		name = name,
 		capacity = capacity,
 		sizeSqft = sizeSqft,
+		addressLine1 = addressLine1,
+		addressLine2 = addressLine2,
 		city = city,
 		state = state,
+		postalCode = postalCode,
 		timezone = timezone,
+		latitude = latitude,
+		longitude = longitude,
 		hourlyRate = hourlyRate,
 		thumbnailUrl = thumbnailUrl,
 		images = images.map { VenueImageResponse(it.id!!, it.imageUrl, it.displayOrder) },
 		createdAt = createdAt,
+	)
+}
+
+/** A request that passed validation, with clean values. */
+private class VenueInput(
+	val name: String,
+	val capacity: Int,
+	val sizeSqft: Int?,
+	val addressLine1: String,
+	val addressLine2: String?,
+	val city: SupportedCity,
+	val postalCode: String,
+	val hourlyRate: BigDecimal,
+	val imageUrls: List<String>,
+)
+
+private const val MAX_IMAGES = 20
+private val MAX_RATE = BigDecimal("99999999.99")
+private val IMAGE_URL = Regex("""^https?://\S+$""")
+
+/** Applies the shared validation rules (docs/project.md) and returns clean values. */
+private fun VenueRequest.validated(): VenueInput {
+	val name = name?.trim().orEmpty()
+	val addressLine1 = addressLine1?.trim().orEmpty()
+	val addressLine2 = addressLine2?.trim()?.ifEmpty { null }
+	val postalCode = postalCode?.trim().orEmpty()
+	val imageUrls = imageUrls.orEmpty().map { it.trim() }.filter { it.isNotEmpty() }
+
+	validate(name.isNotEmpty()) { "Name is required." }
+	validate(name.length <= 255) { "Name must be 255 characters or fewer." }
+	validate(capacity != null && capacity >= 1) { "Capacity must be a whole number of at least 1." }
+	validate(sizeSqft == null || sizeSqft >= 1) { "Size must be a whole number of at least 1." }
+	validate(addressLine1.isNotEmpty() && postalCode.isNotEmpty()) { "Street address and postal code are required." }
+	validate(addressLine1.length <= 255 && (addressLine2?.length ?: 0) <= 255) {
+		"Address lines must be 255 characters or fewer."
+	}
+	validate(postalCode.length <= 20) { "Postal code must be 20 characters or fewer." }
+	val city = city?.let { SupportedCity.find(it) }
+	validate(city != null) {
+		"City must be one of: ${SupportedCity.entries.joinToString { it.displayName }}."
+	}
+	val rate = hourlyRate
+	validate(rate != null && rate > BigDecimal.ZERO && rate.stripTrailingZeros().scale() <= 2 && rate <= MAX_RATE) {
+		"Hourly rate must be more than 0, with at most 2 decimal places."
+	}
+	validate(imageUrls.size <= MAX_IMAGES) { "A venue can have at most $MAX_IMAGES photos." }
+	validate(imageUrls.all { it.length <= 500 && IMAGE_URL.matches(it) }) {
+		"Photo links must be http(s) URLs of 500 characters or fewer."
+	}
+
+	return VenueInput(
+		name, capacity!!, sizeSqft, addressLine1, addressLine2, city!!, postalCode, rate!!.setScale(2), imageUrls,
 	)
 }

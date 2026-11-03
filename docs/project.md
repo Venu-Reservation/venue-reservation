@@ -21,6 +21,8 @@ Agreed while building (Oct and Nov 2026). Each one overrides anything older that
 - The token decides whose data an endpoint returns. There are no `/me` paths and no user ids in paths, bodies or queries: `GET /users` is your profile, `GET /venues` your listings, `GET /reservations` your bookings. Single resources (`/venues/{id}`, `/reservations/{id}`) check on the server that you're allowed.
 - Every venue has an IANA time zone (`venues.timezone`, e.g. `America/New_York`). The API sends and receives UTC ISO-8601; clients show and enter every venue time in the venue's zone, never the device's. Use zone names, not fixed offsets, so daylight saving is handled.
 - Search is by city from a fixed list (see Shared data), each with its zone, so a search time can be converted to UTC before any venue loads. A `GET /cities` endpoint will replace the list later.
+- Venues can only be listed in a supported city. Clients send just `city`; the backend derives `state` and `timezone` from the city list, so a venue can't end up with the wrong zone.
+- Every venue has a street address (`addressLine1`, optional `addressLine2`, `postalCode`), shown publicly on venue details. It also has `latitude` and `longitude`, which stay null until the backend geocodes addresses (see Open items); clients never send them. Search stays by city until a map or area search is built.
 - A booking is a start time on the hour plus a whole number of hours (1 to 12). The design's Guests field is left out until search accepts a guests or capacity filter.
 - Search lives at `GET /venues/search` and returns a page object (`items`, `page`, `size`, `totalItems`, `totalPages`); pages are zero-based.
 - Signup returns the same `{ token, user }` as login, so new users are signed in at once. Passwords need 8 to 128 characters, with no other complexity rules. Tokens are HS256 JWTs whose subject is the user id, valid for 7 days, with no refresh yet.
@@ -33,7 +35,7 @@ Agreed while building (Oct and Nov 2026). Each one overrides anything older that
 ## Domain rules
 
 - Users: one `users` table, no roles. Passwords are stored only as an Argon2id hash. Emails are stored lowercased and unique case-insensitively.
-- Venues: owned by the user in `host_id`, soft-deleted via `deleted_at`; all reads exclude deleted venues. Each has an IANA `timezone`.
+- Venues: owned by the user in `host_id`, soft-deleted via `deleted_at`; all reads exclude deleted venues. Each has an IANA `timezone`, derived from its city. Coordinates are both set or both null.
 - Reservation statuses: PENDING, CONFIRMED, CANCELLED, EXPIRED.
 - A reservation starts PENDING with `expires_at = now + 10 minutes`, waiting on payment.
 - Payment success within the hold confirms it (CONFIRMED, `expires_at` cleared). If the hold already expired, do NOT confirm: flag the payment for refund. A wrong amount, a second payment, or a payment for a cancelled booking is also flagged for refund.
@@ -105,9 +107,14 @@ Venue response:
   "name": "The Atrium at SoHo",
   "capacity": 120,
   "sizeSqft": 2400,
+  "addressLine1": "120 Prince St",
+  "addressLine2": null,
   "city": "New York",
   "state": "NY",
+  "postalCode": "10012",
   "timezone": "America/New_York",
+  "latitude": 40.725300,
+  "longitude": -73.998600,
   "hourlyRate": 320.00,
   "thumbnailUrl": "https://...",
   "images": [{ "id": 1, "imageUrl": "https://...", "displayOrder": 0 }],
@@ -115,7 +122,7 @@ Venue response:
 }
 ```
 
-`sizeSqft` and `thumbnailUrl` may be null; `images` may be empty and is sorted by `displayOrder`.
+`sizeSqft`, `addressLine2`, `thumbnailUrl`, `latitude` and `longitude` may be null; `images` may be empty and is sorted by `displayOrder`. `state` and `timezone` come from the city.
 
 - `GET /venues/search?city=&startTime=&endTime=&page=0&size=20` (public): active venues in the city (case-insensitive). With `startTime` and `endTime` (send both or neither), only venues free for that whole half-open range. `size` is 1 to 100. Returns:
 
@@ -139,12 +146,13 @@ Venue response:
   ```json
   {
     "name": "Wicker Park Loft", "capacity": 75, "sizeSqft": null,
-    "city": "Chicago", "state": "IL", "timezone": "America/Chicago",
+    "addressLine1": "1550 N Milwaukee Ave", "addressLine2": "Floor 2",
+    "city": "Chicago", "postalCode": "60622",
     "hourlyRate": 150.5, "imageUrls": ["https://..."]
   }
   ```
 
-  No `hostId`: the backend takes it from the token. The first image URL becomes `thumbnailUrl`.
+  No `hostId`: the backend takes it from the token. No `state`, `timezone` or coordinates either: `state` and `timezone` come from the city (case-insensitive, one of the supported cities), and coordinates from geocoding later. The first image URL becomes `thumbnailUrl`.
 - `PUT /venues/{id}` (host only): the same body; replaces every field, including the photos.
 - `DELETE /venues/{id}` (host only): soft delete, 204.
 
@@ -197,7 +205,10 @@ Supported cities (until `GET /cities` exists):
 | Venue name | 1 to 255 characters |
 | Capacity, size (sq ft) | Whole number, at least 1 (size optional) |
 | Hourly rate | More than 0, at most 2 decimal places |
-| Time zone | An IANA region name |
+| Venue city | One of the supported cities above (case-insensitive) |
+| Address line 1 | 1 to 255 characters |
+| Address line 2 | Optional, at most 255 characters |
+| Postal code | 1 to 20 characters |
 | Photo URL | http(s), at most 500 characters, at most 20 per venue |
 | Booking | Starts on the hour, 06:00 to 23:00 venue time, 1 to 12 hours, not in the past |
 
@@ -240,6 +251,9 @@ To decide:
 
 - A guests or capacity filter on search.
 - `GET /cities` to replace the fixed city list.
+- Geocoding venue addresses into `latitude` and `longitude`, through a provider whose terms allow storing results (OpenCage or an OpenStreetMap-based one; Google and Mapbox limit or charge for storage). Geocode in the background on create and on address changes, leave coordinates null when an address isn't found, and backfill existing venues once. Optionally let hosts confirm the pin on a map.
+- Map and area search (a radius or the visible map box) using the coordinates, with PostGIS or `earthdistance`, alongside the city search.
+- Search sends the ids of every booked venue, in every city, back to the venues query as a `not in` list. When search grows, replace it with one read-only query in `search` that uses `not exists` against reservations (an exception to the module rule for reads).
 - A venue `description` field, fees (cleaning and service), and a cancellation policy (today a guest can cancel any time before the start).
 - Whether hosts can cancel guests' bookings, and whether hosts can book their own venues (today they can't cancel and can book).
 - What happens to future bookings when a venue is deleted (today they stay).

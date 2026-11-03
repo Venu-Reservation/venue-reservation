@@ -23,12 +23,13 @@ INSERT INTO users (id, name, email, password_hash, created_at) VALUES
 ON CONFLICT DO NOTHING;
 
 -- Jamie hosts the New York venues, Sam hosts Chicago, Alex hosts nothing.
-INSERT INTO venues (id, host_id, name, capacity, size_sqft, city, state, timezone, hourly_rate, thumbnail_url, created_at) VALUES
-    (1, 2, 'The Atrium at SoHo', 120, 2400, 'New York', 'NY', 'America/New_York', 320.00, 'https://picsum.photos/seed/atrium/800/600', '2026-09-01T14:00:00Z'),
-    (2, 2, 'Mercer Street Loft', 80, 1800, 'New York', 'NY', 'America/New_York', 285.00, 'https://picsum.photos/seed/mercer/800/600', '2026-09-03T10:30:00Z'),
-    (3, 2, 'Gallery 41', 60, 1550, 'New York', 'NY', 'America/New_York', 240.00, 'https://picsum.photos/seed/gallery41/800/600', '2026-09-10T16:00:00Z'),
-    (4, 2, 'Hudson Rooftop', 150, NULL, 'New York', 'NY', 'America/New_York', 410.00, NULL, '2026-09-12T09:00:00Z'),
-    (5, 3, 'Fulton Market Studio', 45, 1100, 'Chicago', 'IL', 'America/Chicago', 175.00, 'https://picsum.photos/seed/fulton/800/600', '2026-09-20T18:00:00Z')
+-- Coordinates are filled in here so map work can start; real venues get them from geocoding later.
+INSERT INTO venues (id, host_id, name, capacity, size_sqft, address_line1, address_line2, city, state, postal_code, timezone, latitude, longitude, hourly_rate, thumbnail_url, created_at) VALUES
+    (1, 2, 'The Atrium at SoHo', 120, 2400, '120 Prince St', NULL, 'New York', 'NY', '10012', 'America/New_York', 40.725300, -73.998600, 320.00, 'https://picsum.photos/seed/atrium/800/600', '2026-09-01T14:00:00Z'),
+    (2, 2, 'Mercer Street Loft', 80, 1800, '101 Mercer St', 'Floor 3', 'New York', 'NY', '10012', 'America/New_York', 40.723800, -73.999500, 285.00, 'https://picsum.photos/seed/mercer/800/600', '2026-09-03T10:30:00Z'),
+    (3, 2, 'Gallery 41', 60, 1550, '41 Greene St', NULL, 'New York', 'NY', '10013', 'America/New_York', 40.721500, -74.002100, 240.00, 'https://picsum.photos/seed/gallery41/800/600', '2026-09-10T16:00:00Z'),
+    (4, 2, 'Hudson Rooftop', 150, NULL, '515 W 18th St', 'Rooftop', 'New York', 'NY', '10011', 'America/New_York', 40.745000, -74.007200, 410.00, NULL, '2026-09-12T09:00:00Z'),
+    (5, 3, 'Fulton Market Studio', 45, 1100, '1000 W Fulton Market', 'Suite 200', 'Chicago', 'IL', '60607', 'America/Chicago', 41.886700, -87.652800, 175.00, 'https://picsum.photos/seed/fulton/800/600', '2026-09-20T18:00:00Z')
 ON CONFLICT DO NOTHING;
 
 INSERT INTO venue_images (id, venue_id, image_url, display_order) VALUES

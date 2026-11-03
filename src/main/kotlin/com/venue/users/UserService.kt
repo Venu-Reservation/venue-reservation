@@ -13,7 +13,8 @@ interface UserService {
 	/** Throws a 404 if there's no such user. */
 	fun getProfile(userId: Long): UserProfile
 
-	fun updateProfile(userId: Long, name: String, phone: String?): UserProfile
+	/** Validates and saves the name (required) and phone (optional; blank clears it). */
+	fun updateProfile(userId: Long, name: String?, phone: String?): UserProfile
 
 	/** Display names for the given ids; missing ids are left out. */
 	fun findNames(userIds: Collection<Long>): Map<Long, String>

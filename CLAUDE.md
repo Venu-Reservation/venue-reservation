@@ -30,7 +30,8 @@ One Gradle project, with one package per module under `com.venue` (see Backend r
 
 ## Conventions
 
-- Controllers take request DTOs with nullable fields and validate with `validate(condition) { "message" }`, so a missing field gets a clear `VALIDATION_ERROR` message instead of a generic JSON error. Messages are shown to users as they are, and match the web app's.
+- Controllers stay thin: they pass request DTOs (nullable fields) and `jwt.userId()` to a service. Services validate with `validate(condition) { "message" }`, so the rules hold for every caller and a missing field gets a clear `VALIDATION_ERROR` message instead of a generic JSON error. Messages are shown to users as they are, and match the web app's.
+- A venue's city must be a `SupportedCity`; its state and time zone come from there, never from the request. Coordinates are null until geocoding exists (Open items), and are cleared when the address changes.
 - The caller is always `@AuthenticationPrincipal jwt: Jwt` → `jwt.userId()`. Ownership is checked in services: 404 for missing, then 403 for not yours.
 - Services are `@Transactional`. A reservation's effective status comes from `ReservationRow.effectiveStatus(now)`, so a lapsed hold reads as EXPIRED before the job runs.
 - Read the time only from the injected `Clock` (`Instant.now(clock)`), never `Instant.now()` or SQL `now()`; repository queries take `now` as a parameter. Entity `createdAt` defaults are the one exception. Servers rely on NTP to agree on the time.
@@ -38,11 +39,12 @@ One Gradle project, with one package per module under `com.venue` (see Backend r
 - Profiles: `dev` (the default; local secrets and the `db/dev` seed), `test` (`src/test/resources/application-test.properties`); anything else needs `DB_PASSWORD`, `JWT_SECRET` and `PAYMENT_WEBHOOK_SECRET`.
 - Tests extend `IntegrationTest`: MockMvc against the real app on a shared Postgres container, with tables truncated before each test and helpers to sign up, create venues and book. `clock.advance(...)` (`TestClock`) moves time for the whole app, e.g. past a hold or a token's expiry. In MockMvc paths, write spaces as spaces (`city=New York`); the path is a URI template and gets encoded again.
 
-## Where things stand (Nov 1, 2026)
+## Where things stand (Nov 3, 2026)
 
 Update this section when a step lands, so a new session can pick up from here.
 
-- Phase 1 is complete on `feature/adding_db_flyway`, open as PR 6 (https://github.com/Venu-Reservation/venue-reservation/pull/6), not merged yet. Every endpoint in `docs/project.md` exists. There are 18 Testcontainers tests, including the six required ones, and `./gradlew build` passes.
+- Phase 1 is complete on `feature/adding_db_flyway`, open as PR 6 (https://github.com/Venu-Reservation/venue-reservation/pull/6), not merged yet. Every endpoint in `docs/project.md` exists. There are 25 Testcontainers tests, including the six required ones, and `./gradlew build` passes. Since then: Argon2id passwords, auth rate limits, an injected `Clock` for all time, and venue addresses with nullable coordinates.
+- The user is walking through the code file by file (see Working with the user). Done: build setup, migrations and seed, `common`, security, `auth`, `users`, `venues`. Next: `search`, `reservations`, `payments`, tests, then the web app.
 - Migrations are V1 to V4, one per table (users, venues and images, reservations, payments). They were squashed before anything ran outside local machines; once merged, never edit them and add V5 and up. The dev seed (`db/dev/R__dev_seed.sql`) dates its bookings from the day it runs, and since the database is in memory, every new container gets fresh dates.
 - The web app (`reserved_frontend`) was checked end to end against this backend. Its next screens are availability, Checkout, Confirmation, My bookings and the Host portal, all against existing endpoints. Backend work comes from what those screens need, and from decisions on the Open items in `docs/project.md` (host cancellation, bookings on deleted venues, a guests filter, `GET /cities`).
 - After a merge to `main`, start new work on a new branch from `main`.

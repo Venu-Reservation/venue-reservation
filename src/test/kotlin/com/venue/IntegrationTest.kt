@@ -69,15 +69,24 @@ abstract class IntegrationTest {
 		return TestUser(response.field("user").get("id").asLong(), response.field("token").asString())
 	}
 
-	fun createVenue(host: TestUser, name: String = "Test Hall", timezone: String = NEW_YORK, rate: String = "100"): Long {
-		val body = """
-			{"name":"$name","capacity":50,"sizeSqft":1000,"city":"New York","state":"NY",
-			"timezone":"$timezone","hourlyRate":$rate,"imageUrls":[]}
-		"""
-		val response = post("/api/v1/venues", body, host)
+	fun createVenue(host: TestUser, name: String = "Test Hall", rate: String = "100"): Long {
+		val response = post("/api/v1/venues", venueJson(name = name, rate = rate), host)
 		check(response.status == 201) { "Create venue failed: $response" }
 		return response.field("id").asLong()
 	}
+
+	/** A valid POST or PUT /venues body; override fields to test validation. */
+	fun venueJson(
+		name: String = "Test Hall",
+		city: String = "New York",
+		addressLine1: String = "1 Test St",
+		postalCode: String = "10001",
+		rate: String = "100",
+		imageUrls: String = "[]",
+	) = """
+		{"name":"$name","capacity":50,"sizeSqft":1000,"addressLine1":"$addressLine1","city":"$city",
+		"postalCode":"$postalCode","hourlyRate":$rate,"imageUrls":$imageUrls}
+	"""
 
 	fun reserve(user: TestUser, venueId: Long, slot: Slot): Response = post(
 		"/api/v1/reservations",

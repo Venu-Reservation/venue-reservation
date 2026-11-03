@@ -29,15 +29,32 @@ class Venue(
 	@Column(name = "size_sqft")
 	var sizeSqft: Int? = null,
 
+	@Column(name = "address_line1", nullable = false)
+	var addressLine1: String,
+
+	@Column(name = "address_line2")
+	var addressLine2: String? = null,
+
+	// City, state and timezone always come from SupportedCity together.
 	@Column(nullable = false, length = 100)
 	var city: String,
 
 	@Column(nullable = false, length = 50)
 	var state: String,
 
+	@Column(name = "postal_code", nullable = false, length = 20)
+	var postalCode: String,
+
 	// IANA zone ID, e.g. America/New_York
 	@Column(nullable = false, length = 64)
 	var timezone: String,
+
+	// Both null until the address is geocoded (not built yet), or both set.
+	@Column(precision = 9, scale = 6)
+	var latitude: BigDecimal? = null,
+
+	@Column(precision = 9, scale = 6)
+	var longitude: BigDecimal? = null,
 
 	@Column(name = "hourly_rate", nullable = false, precision = 10, scale = 2)
 	var hourlyRate: BigDecimal,

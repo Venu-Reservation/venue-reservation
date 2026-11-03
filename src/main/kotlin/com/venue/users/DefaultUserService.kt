@@ -3,6 +3,7 @@ package com.venue.users
 import com.venue.common.ConflictException
 import com.venue.common.NotFoundException
 import com.venue.common.isUniqueViolation
+import com.venue.common.validate
 import com.venue.venues.VenueService
 import org.springframework.dao.DataIntegrityViolationException
 import org.springframework.stereotype.Service
@@ -37,10 +38,16 @@ class DefaultUserService(
 	}
 
 	@Transactional
-	override fun updateProfile(userId: Long, name: String, phone: String?): UserProfile {
+	override fun updateProfile(userId: Long, name: String?, phone: String?): UserProfile {
+		val cleanName = name?.trim().orEmpty()
+		val cleanPhone = phone?.trim()?.ifEmpty { null }
+		validate(cleanName.isNotEmpty()) { "Name is required." }
+		validate(cleanName.length <= 255) { "Name must be 255 characters or fewer." }
+		validate(cleanPhone == null || cleanPhone.length <= 50) { "Phone must be 50 characters or fewer." }
+
 		val user = find(userId)
-		user.name = name
-		user.phone = phone
+		user.name = cleanName
+		user.phone = cleanPhone
 		return user.toProfile(venues.hostsAnyVenue(userId))
 	}
 

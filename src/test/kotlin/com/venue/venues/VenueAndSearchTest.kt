@@ -3,31 +3,58 @@ package com.venue.venues
 import com.venue.IntegrationTest
 import org.junit.jupiter.api.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertTrue
 
 class VenueAndSearchTest : IntegrationTest() {
 
 	@Test
-	fun `listing a venue needs a token and validates the time zone`() {
+	fun `listing a venue needs a token, a supported city and an address`() {
 		val host = signUp("Host")
-		val body = """
-			{"name":"Hall","capacity":10,"city":"New York","state":"NY",
-			"timezone":"+05:00","hourlyRate":50,"imageUrls":[]}
-		"""
-		assertEquals(401, post("/api/v1/venues", body).status)
-		val response = post("/api/v1/venues", body, host)
-		assertEquals(400, response.status)
-		assertEquals("Time zone must be an IANA name like America/New_York.", response.field("message").asString())
+		assertEquals(401, post("/api/v1/venues", venueJson()).status)
+
+		val boston = post("/api/v1/venues", venueJson(city = "Boston"), host)
+		assertEquals(400, boston.status)
+		assertEquals("City must be one of: New York, Chicago.", boston.field("message").asString())
+
+		val noAddress = post("/api/v1/venues", venueJson(addressLine1 = " "), host)
+		assertEquals(400, noAddress.status)
+		assertEquals("Street address and postal code are required.", noAddress.field("message").asString())
+	}
+
+	@Test
+	fun `state and time zone come from the city, and coordinates start empty`() {
+		val host = signUp("Host")
+		val venue = post("/api/v1/venues", venueJson(city = " chicago ", addressLine1 = "1550 N Milwaukee Ave"), host)
+
+		assertEquals(201, venue.status)
+		assertEquals("Chicago", venue.field("city").asString())
+		assertEquals("IL", venue.field("state").asString())
+		assertEquals("America/Chicago", venue.field("timezone").asString())
+		assertEquals("1550 N Milwaukee Ave", venue.field("addressLine1").asString())
+		assertTrue(venue.field("addressLine2").isNull)
+		assertTrue(venue.field("latitude").isNull)
+	}
+
+	@Test
+	fun `changing the address clears coordinates, other edits keep them`() {
+		val host = signUp("Host")
+		val venueId = createVenue(host)
+		jdbc.update("update venues set latitude = 40.7, longitude = -74.0 where id = ?", venueId)
+
+		val renamed = put("/api/v1/venues/$venueId", venueJson(name = "Renamed"), host)
+		assertEquals(40.7, renamed.field("latitude").asDouble())
+
+		val moved = put("/api/v1/venues/$venueId", venueJson(addressLine1 = "2 Other St"), host)
+		assertTrue(moved.field("latitude").isNull)
+		assertTrue(moved.field("longitude").isNull)
 	}
 
 	@Test
 	fun `the first photo becomes the thumbnail and GET venues lists only your own`() {
 		val host = signUp("Host")
 		val other = signUp("Other")
-		val body = """
-			{"name":"Hall","capacity":10,"city":"New York","state":"NY","timezone":"America/New_York",
-			"hourlyRate":50.5,"imageUrls":["https://example.com/a.jpg","https://example.com/b.jpg"]}
-		"""
-		val venue = post("/api/v1/venues", body, host)
+		val photos = """["https://example.com/a.jpg","https://example.com/b.jpg"]"""
+		val venue = post("/api/v1/venues", venueJson(imageUrls = photos), host)
 		assertEquals("https://example.com/a.jpg", venue.field("thumbnailUrl").asString())
 		assertEquals(2, venue.field("images").size())
 		createVenue(other)

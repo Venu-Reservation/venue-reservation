@@ -1,7 +1,6 @@
 package com.venue.users
 
 import com.venue.common.security.userId
-import com.venue.common.validate
 import org.springframework.security.core.annotation.AuthenticationPrincipal
 import org.springframework.security.oauth2.jwt.Jwt
 import org.springframework.web.bind.annotation.GetMapping
@@ -19,14 +18,8 @@ class UsersController(private val users: UserService) {
 	fun get(@AuthenticationPrincipal jwt: Jwt): UserProfile = users.getProfile(jwt.userId())
 
 	@PutMapping
-	fun update(@AuthenticationPrincipal jwt: Jwt, @RequestBody request: UpdateProfileRequest): UserProfile {
-		val name = request.name?.trim().orEmpty()
-		val phone = request.phone?.trim()?.ifEmpty { null }
-		validate(name.isNotEmpty()) { "Name is required." }
-		validate(name.length <= 255) { "Name must be 255 characters or fewer." }
-		validate(phone == null || phone.length <= 50) { "Phone must be 50 characters or fewer." }
-		return users.updateProfile(jwt.userId(), name, phone)
-	}
+	fun update(@AuthenticationPrincipal jwt: Jwt, @RequestBody request: UpdateProfileRequest): UserProfile =
+		users.updateProfile(jwt.userId(), request.name, request.phone)
 }
 
 data class UpdateProfileRequest(val name: String?, val phone: String?)

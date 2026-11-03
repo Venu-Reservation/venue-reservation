@@ -9,11 +9,11 @@ interface VenueService {
 	/** True if the user hosts at least one active venue. */
 	fun hostsAnyVenue(userId: Long): Boolean
 
-	/** Lists a venue with [hostId] as its host. */
-	fun create(hostId: Long, input: VenueInput): VenueResponse
+	/** Validates [request] and lists the venue with [hostId] as its host. */
+	fun create(hostId: Long, request: VenueRequest): VenueResponse
 
-	/** Owner only: 404 if missing or deleted, 403 for anyone else. */
-	fun update(userId: Long, venueId: Long, input: VenueInput): VenueResponse
+	/** Owner only: 404 if missing or deleted, 403 for anyone else. Validates like [create]. */
+	fun update(userId: Long, venueId: Long, request: VenueRequest): VenueResponse
 
 	/** Soft-deletes. Owner only, like [update]. */
 	fun delete(userId: Long, venueId: Long)
@@ -36,16 +36,21 @@ interface VenueService {
 	fun findIdsHostedBy(hostId: Long): List<Long>
 }
 
-/** A validated create or update request. */
-data class VenueInput(
-	val name: String,
-	val capacity: Int,
+/**
+ * Request body for POST and PUT, as sent. Fields are nullable so a missing one
+ * gets a clear validation message. There's no hostId (the host is the caller),
+ * no state or timezone (they come from the city) and no coordinates (geocoding, later).
+ */
+data class VenueRequest(
+	val name: String?,
+	val capacity: Int?,
 	val sizeSqft: Int?,
-	val city: String,
-	val state: String,
-	val timezone: String,
-	val hourlyRate: BigDecimal,
-	val imageUrls: List<String>,
+	val addressLine1: String?,
+	val addressLine2: String?,
+	val city: String?,
+	val postalCode: String?,
+	val hourlyRate: BigDecimal?,
+	val imageUrls: List<String>?,
 )
 
 /** The venue JSON the API returns. */
@@ -55,9 +60,14 @@ data class VenueResponse(
 	val name: String,
 	val capacity: Int,
 	val sizeSqft: Int?,
+	val addressLine1: String,
+	val addressLine2: String?,
 	val city: String,
 	val state: String,
+	val postalCode: String,
 	val timezone: String,
+	val latitude: BigDecimal?,
+	val longitude: BigDecimal?,
 	val hourlyRate: BigDecimal,
 	val thumbnailUrl: String?,
 	val images: List<VenueImageResponse>,

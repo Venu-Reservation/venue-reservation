@@ -51,6 +51,10 @@ class AuthAndProfileTest : IntegrationTest() {
 		createVenue(user)
 		assertTrue(get("/api/v1/users", user).field("hasListings").asBoolean())
 
+		val blank = put("/api/v1/users", """{"name":"  ","phone":"555-0100"}""", user)
+		assertEquals(400, blank.status)
+		assertEquals("Name is required.", blank.field("message").asString())
+
 		val updated = put("/api/v1/users", """{"name":"Alex Morgan","phone":"555-0100"}""", user)
 		assertEquals("Alex Morgan", updated.field("name").asString())
 		assertEquals("555-0100", updated.field("phone").asString())
