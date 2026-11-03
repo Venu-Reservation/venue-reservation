@@ -1,8 +1,11 @@
 package com.venue.payments
 
+import com.venue.common.NotFoundException
 import com.venue.common.isUniqueViolation
+import com.venue.common.validate
 import com.venue.reservations.PaymentResult
 import com.venue.reservations.ReservationService
+import org.slf4j.LoggerFactory
 import org.springframework.dao.DataIntegrityViolationException
 import org.springframework.stereotype.Service
 import org.springframework.transaction.support.TransactionTemplate
@@ -19,10 +22,18 @@ class PaymentService(
 	private val reservations: ReservationService,
 	private val transactions: TransactionTemplate,
 ) {
+	private val log = LoggerFactory.getLogger(javaClass)
+
 	fun handle(event: PaymentEvent): PaymentReceipt {
+		validate(event.eventId.isNotBlank() && event.eventId.length <= 100) { "eventId must be 1 to 100 characters." }
 		payments.findOutcome(event.eventId)?.let { return PaymentReceipt(event.eventId, it, duplicate = true) }
 		return try {
-			transactions.execute { PaymentReceipt(event.eventId, record(event), duplicate = false) }
+			transactions.execute { PaymentReceipt(event.eventId, record(event), duplicate = false) }!!
+		} catch (e: NotFoundException) {
+			// No such reservation, so there's nothing to do, now or ever. A 2xx answer
+			// stops the provider retrying; there's no row to record it against.
+			log.warn("Ignored payment event {} for unknown reservation {}", event.eventId, event.reservationId)
+			PaymentReceipt(event.eventId, PaymentOutcome.IGNORED, duplicate = false)
 		} catch (e: DataIntegrityViolationException) {
 			// The same event arrived twice at once and the other request recorded it first.
 			if (!isUniqueViolation(e)) throw e

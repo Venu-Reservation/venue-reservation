@@ -31,33 +31,31 @@ class PaymentWebhookController(
 	@PostMapping("/webhook")
 	fun receive(
 		@RequestHeader("X-Signature", required = false) signature: String?,
-		// The raw body, because the signature covers the exact bytes sent.
-		@RequestBody body: String,
+		// The raw bytes, because the signature covers exactly what was sent.
+		@RequestBody body: ByteArray,
 	): PaymentReceipt {
 		if (signature == null || !signatureMatches(body, signature)) {
 			throw UnauthorizedException("INVALID_SIGNATURE", "The webhook signature is missing or wrong.")
 		}
+		// Parsing JSON into an object is HTTP work; the rules are in PaymentService.
 		val event = try {
 			jsonMapper.readValue(body, PaymentEvent::class.java)
 		} catch (e: JacksonException) {
 			throw ValidationException("The event must have eventId, reservationId, amount and status.")
 		}
-		if (event.eventId.isBlank() || event.eventId.length > 100) {
-			throw ValidationException("eventId must be 1 to 100 characters.")
-		}
 		return payments.handle(event)
 	}
 
-	private fun signatureMatches(body: String, signature: String): Boolean {
+	private fun signatureMatches(body: ByteArray, signature: String): Boolean {
 		val expected = sign(body)
 		// Constant-time comparison, so response timing doesn't leak the signature.
 		return MessageDigest.isEqual(expected.toByteArray(), signature.trim().lowercase().toByteArray())
 	}
 
-	/** Hex HMAC-SHA256 of [body]. Public so tests and dev tools can sign events. */
-	fun sign(body: String): String {
+	/** Hex HMAC-SHA256 of [body]. */
+	private fun sign(body: ByteArray): String {
 		val mac = Mac.getInstance("HmacSHA256")
 		mac.init(key)
-		return mac.doFinal(body.toByteArray()).joinToString("") { "%02x".format(it) }
+		return mac.doFinal(body).joinToString("") { "%02x".format(it) }
 	}
 }

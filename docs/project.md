@@ -191,7 +191,7 @@ Reservation response. Times are UTC; show them in `venue.timezone`:
 
 ### Payments
 
-- `POST /payments/webhook` (from the payment provider): body `{ eventId, reservationId, amount, status }` where `status` is `SUCCEEDED` or `FAILED`, signed with header `X-Signature: <hex HMAC-SHA256 of the raw body>` using the shared webhook secret. Returns `{ eventId, outcome, duplicate }`, where `outcome` is `CONFIRMED`, `REFUND_REQUIRED` or `IGNORED`. Each `eventId` is handled once; repeats return the first outcome with `duplicate: true`.
+- `POST /payments/webhook` (from the payment provider): body `{ eventId, reservationId, amount, status }` where `status` is `SUCCEEDED` or `FAILED`, signed with header `X-Signature: <hex HMAC-SHA256 of the raw body>` using the shared webhook secret. Returns `{ eventId, outcome, duplicate }`, where `outcome` is `CONFIRMED`, `REFUND_REQUIRED` or `IGNORED`. Each `eventId` is handled once; repeats return the first outcome with `duplicate: true`. An event for a reservation that doesn't exist gets 200 with `IGNORED` and isn't recorded, so the provider stops retrying it.
 - `POST /reservations/{id}/pay` (dev profile only, guest only): pays your own booking as if the provider had confirmed it, and returns the reservation.
 
 ## Shared data and validation
@@ -274,7 +274,8 @@ To decide:
 - Passkeys (WebAuthn), through a library (Spring Security's WebAuthn4J support or Yubico's `java-webauthn-server`), with a credentials table. iOS needs an `apple-app-site-association` file on a real HTTPS domain. To decide: passkey sign-up or only adding one to an existing account, and recovery when a device is lost.
 - Suggested order for the items above: email, then Google and Apple, then passkeys.
 - Rate limits are counted in memory per server. With several servers, move them to a shared store or the edge (reverse proxy or CDN).
-- The real payment provider and its event format; the webhook shape above is ours for now.
+- The real payment provider and its event format; the webhook shape above is ours for now. Verify its webhooks with the provider's SDK, including its signed timestamp (rejecting events older than about 5 minutes), so a captured request can't be replayed later.
+- Refunds: issue them through the provider for `REFUND_REQUIRED` payments. Today they're only recorded in the `payments` table.
 
 Clients:
 

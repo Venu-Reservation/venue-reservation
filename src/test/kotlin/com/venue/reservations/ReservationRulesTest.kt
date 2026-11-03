@@ -184,6 +184,18 @@ class ReservationRulesTest : IntegrationTest() {
 		get("/api/v1/venues/search?city=New York&startTime=${slot.start}&endTime=${slot.end}")
 			.field("totalItems").asInt()
 
+	@Test
+	fun `a payment for an unknown reservation is acknowledged and ignored`() {
+		val receipt = webhook(eventId = "evt-unknown", reservationId = 999_999, amount = "100.00")
+		assertEquals(200, receipt.status)
+		assertEquals("IGNORED", receipt.field("outcome").asString())
+		assertEquals(0, jdbc.queryForObject("select count(*) from payments", Int::class.java))
+
+		val blankId = webhook(eventId = " ", reservationId = 1, amount = "100.00")
+		assertEquals(400, blankId.status)
+		assertEquals("eventId must be 1 to 100 characters.", blankId.field("message").asString())
+	}
+
 	private fun webhook(eventId: String, reservationId: Long, amount: String): Response {
 		val body = """{"eventId":"$eventId","reservationId":$reservationId,"amount":$amount,"status":"SUCCEEDED"}"""
 		return post("/api/v1/payments/webhook", body, headers = mapOf("X-Signature" to sign(body)))
