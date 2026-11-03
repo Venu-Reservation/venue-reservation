@@ -9,8 +9,8 @@ Keep one canonical copy of this file and sync it into the other repos (copy it, 
 Phase 1 MVP of a venue reservation platform: people search venues by city and time, book them with a 10-minute payment hold, and list their own venues.
 
 - Backend: `Venu-Reservation/venue-reservation` on GitHub. Kotlin, Spring Boot 4, PostgreSQL 17, Flyway. Runs on http://localhost:8080.
-- Web: `reserved_frontend`. Vite, React, JavaScript, Tailwind. Runs on http://localhost:5173.
-- iOS: planned. Uses the same API and the same mock API as the web app. Its design and how it maps to the API: see iOS design and the API.
+- Web: `Venu-Reservation/reserved_frontend` on GitHub. Vite, React, JavaScript, Tailwind. Runs on http://localhost:5173.
+- iOS: `Venu-Reservation/reserved_ios` on GitHub, not started yet (no Xcode project). Uses the same API and the same mock API as the web app. Its design and how it maps to the API: see iOS design and the API.
 - Design: Figma Make prototype at https://basil-fluent-18847322.figma.site/ with seven screens reached from the header menu: Discover, Venue details, Checkout, Confirmation, My bookings, Host portal, Sign in. There is no design for Sign up or for listing a venue; those reuse the existing styles.
 
 ## Decisions
