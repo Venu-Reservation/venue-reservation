@@ -14,12 +14,12 @@ class User(
 	@Column(nullable = false)
 	var name: String,
 
-	// Always stored lowercased; unique case-insensitively (V1).
-	@Column(nullable = false, unique = true)
+	// Always stored lowercased; unique case-insensitively via the lower(email) index (V1).
+	@Column(nullable = false)
 	var email: String,
 
-	// BCrypt hash; the password itself is never stored.
-	@Column(name = "password_hash", nullable = false, length = 100)
+	// Argon2id hash with an {argon2} prefix; the password itself is never stored.
+	@Column(name = "password_hash", nullable = false)
 	var passwordHash: String,
 
 	@Column(length = 50)
