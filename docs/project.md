@@ -10,7 +10,7 @@ Phase 1 MVP of a venue reservation platform: people search venues by city and ti
 
 - Backend: `Venu-Reservation/venue-reservation` on GitHub. Kotlin, Spring Boot 4, PostgreSQL 17, Flyway. Runs on http://localhost:8080.
 - Web: `reserved_frontend`. Vite, React, JavaScript, Tailwind. Runs on http://localhost:5173.
-- iOS: planned. Uses the same API and the same mock API as the web app.
+- iOS: planned. Uses the same API and the same mock API as the web app. Its design and how it maps to the API: see iOS design and the API.
 - Design: Figma Make prototype at https://basil-fluent-18847322.figma.site/ with seven screens reached from the header menu: Discover, Venue details, Checkout, Confirmation, My bookings, Host portal, Sign in. There is no design for Sign up or for listing a venue; those reuse the existing styles.
 
 ## Decisions
@@ -238,6 +238,48 @@ A json-server mock lives in the web repo (`mock/`) and serves the same `/api/v1`
 - Handle loading, empty, error and 409 conflict states on every screen that calls the API. On any 401 while a token was sent, drop the token and sign the user out.
 - Keep the API client layer separate from views, with models matching the DTOs above.
 
+## iOS design and the API
+
+The iOS design is a Figma Make prototype: https://www.figma.com/make/qiV1HkBHXQZN1pbH1oV6lN/Venue-Reservation-Platform-Wireframe (its live preview opens without signing in). Seven screens on an iPhone 15 canvas (390 × 844 pt, 8 pt grid, 44 pt touch targets) and a tab bar: Discover, Bookings, Host, Account. Reviewed Nov 3, 2026 against the contract above.
+
+For each screen: **Build** what the API already supports, **Leave out** what it has no data for (as the web app does; see Decisions), and **Needs backend** for small API additions, listed under Open items. Show every time in `venue.timezone`.
+
+**01 Discover**
+- Build: the city heading, the search card (city, then date and time; "any date" is a search without `startTime`/`endTime`), venue cards from `GET /venues/search` (name, thumbnail, hourly rate, city), and the avatar's initials from `user.name`. There's no "featured" flag; the large card can be the first result.
+- Leave out: category chips (Celebrations, Meetings, Photo shoots), match %, ratings, the heart (saved venues), the guests range, neighbourhood names ("SoHo"), "Instant book", and "Available this weekend" (it needs a search over a date range, not one time).
+- Later: "Nearby spaces", distances and the Map link need map and area search (Open items). `latitude` and `longitude` already exist, null until geocoding.
+
+**02 Venue details**
+- Build: the photo gallery and its counter (`images`), name, address (`formatAddress` on web), capacity, size, the Live availability strip from `GET /venues/{id}/availability` with a date picker (picking consecutive hours is client logic), the hourly rate, the total (rate × hours), and Reserve (`POST /reservations`). When `paused` is true, disable Reserve and say the venue isn't taking bookings. Share can share the web link `/venues/{id}`.
+- Leave out: match %, rating and review count, the heart, "About this space" (no `description` yet), Message (no messaging), and fees: the design's $1,420 for 4 hours at $320 includes fees, ours is $1,280.
+- Needs backend: the host's display name ("Hosted by Jordan…"); the venue has only `hostId`.
+
+**03 Checkout**
+- Build: the hold countdown from `expiresAt` (10 minutes), the summary (venue, date, hours, time range), and the 409 `RESERVATION_CONFLICT`, 409 `VENUE_NOT_ACCEPTING_BOOKINGS` and expired-hold states. "Edit" goes back to venue details; a changed time is a new hold, so cancel the old one (`DELETE`) first. Step 1, contact details: name and email from `GET /users` (the email is read-only), phone saved with `PUT /users`.
+- Leave out: step 2, event details (event type, guest count, note to host; reservations have none of these), "72 guests", and "Free cancellation for 48 hours" (there's no cancellation policy; today a guest can cancel until the start).
+- Payment (step 3) waits for the payment provider (Open items). Card numbers and Apple Pay must go through the provider's iOS SDK and never reach our backend. Until then, a dev-only Pay button calls `POST /reservations/{id}/pay`.
+
+**04 Confirmation**
+- Build: the confirmed state, venue, date and time, total, "View booking details" (`GET /reservations/{id}`), and Add to Calendar (on the device, with EventKit: start, end and the venue's address).
+- Leave out: guests.
+- Needs backend: a booking reference like "RSV–8F42K". Until then, show the reservation id.
+
+**05 Bookings**
+- Build: Upcoming and Past tabs (`GET /reservations?when=upcoming|past`) with their counts, the "Next up · in N days" card (the first upcoming one), status badges, and Manage reservation (details, and cancel with `DELETE`). Directions opens Maps with the venue's address, from `GET /venues/{id}`.
+- Leave out: View pass (there's no ticket or pass).
+- Needs backend (optional): the venue's address in the reservation's `venue` summary, to save that extra call.
+
+**06 Host portal** (only when `hasListings`)
+- Build: the greeting, "Your venues" from `GET /venues` with "Live & available" from `paused`, today's schedule from `GET /reservations?as=host` (guest name from `renter.name`, the booking total), View calendar from the same list, Manage (edit, pause or resume, delete, with the 409 `VENUE_HAS_BOOKINGS` state), and "List a new venue" (`POST /venues`).
+- Leave out: occupancy percentages, revenue change from last month, and company names ("Brighton Co."). Monthly revenue and "bookings this month" can be summed from the `as=host` list on the device for now.
+- Needs backend (later): a host stats endpoint, once revenue and occupancy are defined.
+
+**07 Authentication**
+- Build: email and password sign in (`POST /auth/login`), "Create an account" (`POST /auth/signup`), and the 401 `INVALID_CREDENTIALS` and 429 `TOO_MANY_REQUESTS` messages.
+- Leave out: Continue with Apple and with Google, Forgot password (all in Open items), and the Terms and Privacy links until those documents exist.
+
+**Account tab**: the design has no screen for it. Until it does: the profile (`GET /users`, edit with `PUT /users`) and Sign out.
+
 ## Backend rules
 
 - Kotlin Spring Boot modular monolith, PostgreSQL, Flyway, Gradle Kotlin DSL. Packages under `com.venue`: auth, users, venues, reservations, search, payments, common. Modules talk through service interfaces only (`UserService`, `VenueService`, `ReservationService`), never another module's repository or tables.
@@ -276,6 +318,13 @@ To decide:
 - Rate limits are counted in memory per server. With several servers, move them to a shared store or the edge (reverse proxy or CDN).
 - The real payment provider and its event format; the webhook shape above is ours for now. Verify its webhooks with the provider's SDK, including its signed timestamp (rejecting events older than about 5 minutes), so a captured request can't be replayed later.
 - Refunds: issue them through the provider for `REFUND_REQUIRED` payments. Today they're only recorded in the `payments` table.
+- From the iOS design (see iOS design and the API):
+  - The host's display name on venues ("Hosted by …").
+  - A booking reference code (e.g. "RSV–8F42K") on reservations.
+  - Event details on reservations: guest count, event type and a note to the host. A guest count also needs the venue's capacity check.
+  - The venue's address in the reservation's `venue` summary, for Directions.
+  - Host stats (monthly revenue, change from last month, occupancy), once they're defined.
+  - Messaging between guests and hosts, saved venues, reviews and ratings, and categories.
 
 Clients:
 
