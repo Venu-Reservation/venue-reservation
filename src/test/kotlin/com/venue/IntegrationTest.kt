@@ -17,6 +17,8 @@ import org.springframework.test.web.servlet.request.MockMvcRequestBuilders
 import tools.jackson.databind.JsonNode
 import tools.jackson.databind.json.JsonMapper
 import java.time.LocalDate
+import javax.crypto.Mac
+import javax.crypto.spec.SecretKeySpec
 import java.time.LocalTime
 import java.time.ZoneId
 import java.time.ZonedDateTime
@@ -123,6 +125,25 @@ abstract class IntegrationTest {
 		val content = result.response.contentAsString
 		val headers = result.response.headerNames.associateWith { result.response.getHeader(it).orEmpty() }
 		return Response(result.response.status, if (content.isBlank()) null else jsonMapper.readTree(content), headers)
+	}
+
+	/** Sends a successful payment event, signed like the payment provider would. */
+	fun webhook(eventId: String, reservationId: Long, amount: String): Response {
+		val body = """{"eventId":"$eventId","reservationId":$reservationId,"amount":$amount,"status":"SUCCEEDED"}"""
+		return post("/api/v1/payments/webhook", body, headers = mapOf("X-Signature" to sign(body)))
+	}
+
+	/** Hex HMAC-SHA256 with the test profile's webhook secret. */
+	fun sign(body: String): String {
+		val mac = Mac.getInstance("HmacSHA256")
+		mac.init(SecretKeySpec("test-only-webhook-secret".toByteArray(), "HmacSHA256"))
+		return mac.doFinal(body.toByteArray()).joinToString("") { "%02x".format(it) }
+	}
+
+	/** Pays a reservation's full total through the webhook, confirming it. */
+	fun pay(reservation: Response): Response {
+		val id = reservation.field("id").asLong()
+		return webhook("evt-$id", id, reservation.field("totalPrice").asString())
 	}
 
 	/** A booking window [start, end) in UTC, built from a local time at a venue. */

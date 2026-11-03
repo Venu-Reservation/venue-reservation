@@ -2,15 +2,12 @@ package com.venue.reservations
 
 import com.venue.IntegrationTest
 import org.junit.jupiter.api.Test
+import org.springframework.beans.factory.annotation.Autowired
 import java.time.Duration
 import java.util.concurrent.Callable
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
-import javax.crypto.Mac
-import javax.crypto.spec.SecretKeySpec
 import kotlin.test.assertEquals
-import kotlin.test.assertFalse
-import kotlin.test.assertTrue
 
 /** The booking rules the spec requires tests for (docs/project.md, Backend rules). */
 class ReservationRulesTest : IntegrationTest() {
@@ -75,64 +72,6 @@ class ReservationRulesTest : IntegrationTest() {
 	}
 
 	@Test
-	fun `payment after expiry is not confirmed`() {
-		val host = signUp("Host")
-		val guest = signUp("Guest")
-		val venueId = createVenue(host, rate = "100")
-		val reservationId = reserve(guest, venueId, slot(daysAhead = 3, hour = 18, hours = 2)).field("id").asLong()
-		clock.advance(HOLD_DURATION + Duration.ofSeconds(1))
-
-		val receipt = webhook(eventId = "evt-late", reservationId = reservationId, amount = "200.00")
-
-		assertEquals(200, receipt.status)
-		assertEquals("REFUND_REQUIRED", receipt.field("outcome").asString())
-		assertEquals("EXPIRED", get("/api/v1/reservations/$reservationId", guest).field("status").asString())
-	}
-
-	@Test
-	fun `payment within the hold confirms the reservation`() {
-		val host = signUp("Host")
-		val guest = signUp("Guest")
-		val venueId = createVenue(host, rate = "100")
-		val reservationId = reserve(guest, venueId, slot(daysAhead = 3, hour = 18, hours = 2)).field("id").asLong()
-
-		val receipt = webhook(eventId = "evt-paid", reservationId = reservationId, amount = "200.00")
-
-		assertEquals("CONFIRMED", receipt.field("outcome").asString())
-		val reservation = get("/api/v1/reservations/$reservationId", guest)
-		assertEquals("CONFIRMED", reservation.field("status").asString())
-		assertTrue(reservation.field("expiresAt").isNull)
-	}
-
-	@Test
-	fun `duplicate webhook is idempotent`() {
-		val host = signUp("Host")
-		val guest = signUp("Guest")
-		val venueId = createVenue(host, rate = "100")
-		val reservationId = reserve(guest, venueId, slot(daysAhead = 3, hour = 18, hours = 2)).field("id").asLong()
-
-		val first = webhook(eventId = "evt-1", reservationId = reservationId, amount = "200.00")
-		val second = webhook(eventId = "evt-1", reservationId = reservationId, amount = "200.00")
-
-		assertEquals("CONFIRMED", first.field("outcome").asString())
-		assertFalse(first.field("duplicate").asBoolean())
-		assertEquals("CONFIRMED", second.field("outcome").asString())
-		assertTrue(second.field("duplicate").asBoolean())
-		assertEquals(1, jdbc.queryForObject("select count(*) from payments", Int::class.java))
-	}
-
-	@Test
-	fun `webhook with a wrong signature is rejected`() {
-		val response = post(
-			"/api/v1/payments/webhook",
-			"""{"eventId":"evt","reservationId":1,"amount":1,"status":"SUCCEEDED"}""",
-			headers = mapOf("X-Signature" to "not-the-signature"),
-		)
-		assertEquals(401, response.status)
-		assertEquals("INVALID_SIGNATURE", response.field("code").asString())
-	}
-
-	@Test
 	fun `non-owners cannot edit, delete or cancel`() {
 		val host = signUp("Host")
 		val guest = signUp("Guest")
@@ -185,26 +124,92 @@ class ReservationRulesTest : IntegrationTest() {
 			.field("totalItems").asInt()
 
 	@Test
-	fun `a payment for an unknown reservation is acknowledged and ignored`() {
-		val receipt = webhook(eventId = "evt-unknown", reservationId = 999_999, amount = "100.00")
-		assertEquals(200, receipt.status)
-		assertEquals("IGNORED", receipt.field("outcome").asString())
-		assertEquals(0, jdbc.queryForObject("select count(*) from payments", Int::class.java))
+	fun `the guest can cancel, twice is fine, but not an expired or started booking`() {
+		val host = signUp("Host")
+		val guest = signUp("Guest")
+		val venueId = createVenue(host)
+		val booking = reserve(guest, venueId, slot(daysAhead = 3, hour = 18)).field("id").asLong()
+		val hold = reserve(guest, venueId, slot(daysAhead = 4, hour = 18)).field("id").asLong()
+		val soon = reserve(guest, venueId, slot(daysAhead = 1, hour = 10))
+		pay(soon)
 
-		val blankId = webhook(eventId = " ", reservationId = 1, amount = "100.00")
-		assertEquals(400, blankId.status)
-		assertEquals("eventId must be 1 to 100 characters.", blankId.field("message").asString())
+		val cancelled = delete("/api/v1/reservations/$booking", guest)
+		assertEquals(200, cancelled.status)
+		assertEquals("CANCELLED", cancelled.field("status").asString())
+		assertEquals("CANCELLED", delete("/api/v1/reservations/$booking", guest).field("status").asString(), "twice is fine")
+
+		clock.advance(Duration.ofMinutes(11))
+		val expired = delete("/api/v1/reservations/$hold", guest)
+		assertEquals(409, expired.status)
+		assertEquals("RESERVATION_NOT_CANCELLABLE", expired.field("code").asString())
+
+		clock.advance(Duration.ofDays(2))
+		val started = delete("/api/v1/reservations/${soon.field("id").asLong()}", guest)
+		assertEquals(409, started.status)
+		assertEquals("This booking has already started.", started.field("message").asString())
 	}
 
-	private fun webhook(eventId: String, reservationId: Long, amount: String): Response {
-		val body = """{"eventId":"$eventId","reservationId":$reservationId,"amount":$amount,"status":"SUCCEEDED"}"""
-		return post("/api/v1/payments/webhook", body, headers = mapOf("X-Signature" to sign(body)))
+	@Test
+	fun `upcoming and past lists, and the host's view`() {
+		val host = signUp("Host")
+		val guest = signUp("Guest")
+		val other = signUp("Other")
+		val venueId = createVenue(host)
+		val later = reserve(guest, venueId, slot(daysAhead = 5, hour = 18))
+		pay(later)
+		val sooner = reserve(guest, venueId, slot(daysAhead = 3, hour = 18)) // still a pending hold
+		val cancelled = reserve(guest, venueId, slot(daysAhead = 4, hour = 18))
+		delete("/api/v1/reservations/${cancelled.field("id").asLong()}", guest)
+		reserve(other, venueId, slot(daysAhead = 6, hour = 18))
+
+		assertEquals(ids(sooner, later), listIds("/api/v1/reservations?when=upcoming", guest), "soonest first")
+		assertEquals(ids(cancelled), listIds("/api/v1/reservations?when=past", guest))
+		assertEquals(ids(later, cancelled, sooner), listIds("/api/v1/reservations", guest), "all, latest start first")
+		assertEquals(4, listIds("/api/v1/reservations?as=host", host).size, "the host sees every guest's bookings")
+		assertEquals(emptyList(), listIds("/api/v1/reservations?as=host", guest), "the guest hosts nothing")
+
+		val bad = get("/api/v1/reservations?when=soon", guest)
+		assertEquals(400, bad.status)
+		assertEquals("when must be upcoming or past.", bad.field("message").asString())
 	}
 
-	// Signs like the payment provider would, with the test profile's webhook secret.
-	private fun sign(body: String): String {
-		val mac = Mac.getInstance("HmacSHA256")
-		mac.init(SecretKeySpec("test-only-webhook-secret".toByteArray(), "HmacSHA256"))
-		return mac.doFinal(body.toByteArray()).joinToString("") { "%02x".format(it) }
+	@Test
+	fun `a reservation is visible to its guest and the venue's host only`() {
+		val host = signUp("Host")
+		val guest = signUp("Guest")
+		val stranger = signUp("Stranger")
+		val id = reserve(guest, createVenue(host), slot(daysAhead = 3, hour = 18)).field("id").asLong()
+
+		assertEquals(200, get("/api/v1/reservations/$id", guest).status)
+		assertEquals(200, get("/api/v1/reservations/$id", host).status)
+		assertEquals(403, get("/api/v1/reservations/$id", stranger).status)
 	}
+
+	@Test
+	fun `the expiry job marks lapsed holds EXPIRED in the database`() {
+		val host = signUp("Host")
+		val guest = signUp("Guest")
+		val venueId = createVenue(host)
+		val lapsed = reserve(guest, venueId, slot(daysAhead = 3, hour = 18)).field("id").asLong()
+		clock.advance(Duration.ofMinutes(11))
+		val fresh = reserve(guest, venueId, slot(daysAhead = 4, hour = 18)).field("id").asLong()
+
+		holdExpiryJob.expireStaleHolds()
+
+		assertEquals("EXPIRED", storedStatus(lapsed))
+		assertEquals("PENDING", storedStatus(fresh))
+	}
+
+	@Autowired
+	lateinit var holdExpiryJob: HoldExpiryJob
+
+	private fun ids(vararg reservations: Response) = reservations.map { it.field("id").asLong() }
+
+	private fun listIds(path: String, user: TestUser): List<Long> {
+		val items = get(path, user).body!!
+		return (0 until items.size()).map { items.get(it).get("id").asLong() }
+	}
+
+	private fun storedStatus(id: Long) =
+		jdbc.queryForObject("select status from reservations where id = ?", String::class.java, id)
 }

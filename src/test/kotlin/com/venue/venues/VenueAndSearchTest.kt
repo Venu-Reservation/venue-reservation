@@ -159,4 +159,22 @@ class VenueAndSearchTest : IntegrationTest() {
 		clock.advance(java.time.Duration.ofMinutes(11))
 		assertEquals(204, delete("/api/v1/venues/$venueId", host).status)
 	}
+
+	@Test
+	fun `availability follows daylight saving in the venue's zone`() {
+		val venueId = createVenue(signUp("Host"))
+		fun slots(date: String) = get("/api/v1/venues/$venueId/availability?date=$date").field("slots")
+
+		// New York moves its clocks forward on March 14, 2027: 06:00 is 11:00 UTC the
+		// day before (EST, UTC-5) and 10:00 UTC that day (EDT, UTC-4).
+		val before = slots("2027-03-13")
+		val after = slots("2027-03-14")
+		assertEquals("2027-03-13T11:00:00Z", before.get(0).get("startTime").asString())
+		assertEquals("2027-03-14T10:00:00Z", after.get(0).get("startTime").asString())
+		assertEquals("06:00", after.get(0).get("localTime").asString())
+		assertEquals(18, after.size(), "still one slot per hour from 06:00 to 23:00")
+
+		// And back on November 7, 2027.
+		assertEquals("2027-11-07T11:00:00Z", slots("2027-11-07").get(0).get("startTime").asString())
+	}
 }
