@@ -75,6 +75,18 @@ class VenueAndSearchTest : IntegrationTest() {
 	}
 
 	@Test
+	fun `search rejects half a time range and bad paging`() {
+		val halfRange = get("/api/v1/venues/search?city=New York&startTime=2030-01-01T18:00:00Z")
+		assertEquals(400, halfRange.status)
+		assertEquals("Send both startTime and endTime, or neither.", halfRange.field("message").asString())
+
+		val tooBig = get("/api/v1/venues/search?city=New York&size=101")
+		assertEquals("size must be between 1 and 100.", tooBig.field("message").asString())
+
+		assertEquals(0, get("/api/v1/venues/search?city=Boston").field("totalItems").asInt(), "unknown cities are just empty")
+	}
+
+	@Test
 	fun `search pages results and availability marks booked hours`() {
 		val host = signUp("Host")
 		val guest = signUp("Guest")
