@@ -30,7 +30,7 @@ One Gradle project, with one package per module under `com.venue` (see Backend r
 
 ## Conventions
 
-- Controllers stay thin: they pass request DTOs (nullable fields) and `jwt.userId()` to a service. Services validate with `validate(condition) { "message" }`, so the rules hold for every caller and a missing field gets a clear `VALIDATION_ERROR` message instead of a generic JSON error. Messages are shown to users as they are, and match the web app's.
+- Controllers stay thin: they turn HTTP into types (path and query parameters, e.g. `when=upcoming` into an enum) and pass request DTOs (nullable fields) and `jwt.userId()` to a service. Services validate with `validate(condition) { "message" }`, so the rules hold for every caller and a missing field gets a clear `VALIDATION_ERROR` message instead of a generic JSON error. Messages are shown to users as they are, and match the web app's.
 - A venue's city must be a `SupportedCity`; its state and time zone come from there, never from the request. Coordinates are null until geocoding exists (Open items), and are cleared when the address changes.
 - The caller is always `@AuthenticationPrincipal jwt: Jwt` → `jwt.userId()`. Ownership is checked in services: 404 for missing, then 403 for not yours.
 - Services are `@Transactional`. A reservation's effective status comes from `ReservationRow.effectiveStatus(now)`, so a lapsed hold reads as EXPIRED before the job runs.

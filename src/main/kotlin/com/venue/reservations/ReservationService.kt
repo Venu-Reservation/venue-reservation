@@ -29,10 +29,10 @@ interface ReservationService {
 	fun bookedPeriods(venueId: Long, range: TimeRange): List<TimeRange>
 
 	/**
-	 * Books [range] at a venue for [userId] as a PENDING hold that expires in
-	 * 10 minutes. Throws a 409 RESERVATION_CONFLICT if the time is taken.
+	 * Validates and books [startTime, endTime) at a venue for [userId] as a PENDING
+	 * hold that expires in 10 minutes. Throws a 409 RESERVATION_CONFLICT if the time is taken.
 	 */
-	fun reserve(userId: Long, venueId: Long, range: TimeRange): ReservationResponse
+	fun reserve(userId: Long, venueId: Long?, startTime: Instant?, endTime: Instant?): ReservationResponse
 
 	/** The renter or the venue's host can view; anyone else gets a 403. */
 	fun get(userId: Long, reservationId: Long): ReservationResponse

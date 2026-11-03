@@ -1,9 +1,7 @@
 package com.venue.reservations
 
-import com.venue.common.TimeRange
 import com.venue.common.ValidationException
 import com.venue.common.security.userId
-import com.venue.common.validate
 import org.springframework.http.HttpStatus
 import org.springframework.security.core.annotation.AuthenticationPrincipal
 import org.springframework.security.oauth2.jwt.Jwt
@@ -26,17 +24,12 @@ class ReservationsController(private val reservations: ReservationService) {
 	/** Books a venue as a PENDING hold that must be paid within 10 minutes (see expiresAt). */
 	@PostMapping
 	@ResponseStatus(HttpStatus.CREATED)
-	fun create(@AuthenticationPrincipal jwt: Jwt, @RequestBody request: ReservationRequest): ReservationResponse {
-		val venueId = request.venueId
-		val start = request.startTime
-		val end = request.endTime
-		validate(venueId != null && start != null && end != null) { "venueId, startTime and endTime are required." }
-		validate(start!! < end!!) { "startTime must be before endTime." }
-		return reservations.reserve(jwt.userId(), venueId!!, TimeRange(start, end))
-	}
+	fun create(@AuthenticationPrincipal jwt: Jwt, @RequestBody request: ReservationRequest): ReservationResponse =
+		reservations.reserve(jwt.userId(), request.venueId, request.startTime, request.endTime)
 
 	/**
-	 * Your bookings, or with as=host the bookings on venues you host.
+	 * Your bookings, or with as=host the bookings on venues you host. Turning the
+	 * query strings into enums is HTTP work, so it stays here; the rules are in the service.
 	 * when=upcoming or when=past narrows the list; without it, everything, newest first.
 	 */
 	@GetMapping

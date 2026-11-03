@@ -151,6 +151,21 @@ class ReservationRulesTest : IntegrationTest() {
 	}
 
 	@Test
+	fun `a booking needs a venue and a forward time range`() {
+		val guest = signUp("Guest")
+		val missing = post("/api/v1/reservations", """{"startTime":"2030-01-01T18:00:00Z"}""", guest)
+		assertEquals(400, missing.status)
+		assertEquals("venueId, startTime and endTime are required.", missing.field("message").asString())
+
+		val backwards = post(
+			"/api/v1/reservations",
+			"""{"venueId":1,"startTime":"2030-01-01T20:00:00Z","endTime":"2030-01-01T18:00:00Z"}""",
+			guest,
+		)
+		assertEquals("startTime must be before endTime.", backwards.field("message").asString())
+	}
+
+	@Test
 	fun `booking rules are enforced in the venue's time zone`() {
 		val host = signUp("Host")
 		val guest = signUp("Guest")

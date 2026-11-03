@@ -4,13 +4,16 @@ import com.venue.common.ConflictException
 import com.venue.common.ForbiddenException
 import com.venue.common.NotFoundException
 import com.venue.common.TimeRange
+import com.venue.common.isDeadlock
 import com.venue.common.isExclusionViolation
 import com.venue.common.validate
 import com.venue.users.UserService
 import com.venue.venues.VenueService
+import org.springframework.dao.DataAccessException
 import org.springframework.dao.DataIntegrityViolationException
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
+import org.springframework.transaction.support.TransactionTemplate
 import java.math.BigDecimal
 import java.time.Clock
 import java.time.Duration
@@ -24,6 +27,7 @@ class DefaultReservationService(
 	private val venues: VenueService,
 	private val users: UserService,
 	private val clock: Clock,
+	private val transactions: TransactionTemplate,
 ) : ReservationService {
 
 	@Transactional(readOnly = true)
@@ -34,8 +38,23 @@ class DefaultReservationService(
 	override fun bookedPeriods(venueId: Long, range: TimeRange): List<TimeRange> =
 		reservations.bookedPeriods(venueId, range, Instant.now(clock))
 
-	@Transactional
-	override fun reserve(userId: Long, venueId: Long, range: TimeRange): ReservationResponse {
+	// Not @Transactional: each attempt below runs in its own transaction.
+	override fun reserve(userId: Long, venueId: Long?, startTime: Instant?, endTime: Instant?): ReservationResponse {
+		validate(venueId != null && startTime != null && endTime != null) { "venueId, startTime and endTime are required." }
+		validate(startTime!! < endTime!!) { "startTime must be before endTime." }
+		val range = TimeRange(startTime, endTime)
+		return try {
+			transactions.execute { reserveOnce(userId, venueId!!, range) }!!
+		} catch (e: DataAccessException) {
+			// The hold-expiry job and this booking can expire the same stale holds at
+			// once, lock them in different orders and deadlock. Postgres then aborts one
+			// transaction; if it was ours, try once more in a fresh one.
+			if (!isDeadlock(e)) throw e
+			transactions.execute { reserveOnce(userId, venueId!!, range) }!!
+		}
+	}
+
+	private fun reserveOnce(userId: Long, venueId: Long, range: TimeRange): ReservationResponse {
 		val now = Instant.now(clock)
 		val venue = venues.getBookingInfo(venueId)
 		val hours = validateBooking(range, ZoneId.of(venue.timezone), now)
