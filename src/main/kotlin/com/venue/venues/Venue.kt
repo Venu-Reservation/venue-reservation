@@ -62,6 +62,10 @@ class Venue(
 	@Column(name = "thumbnail_url", length = 500)
 	var thumbnailUrl: String? = null,
 
+	// The host stopped new bookings. Hidden from search; existing bookings stay.
+	@Column(nullable = false)
+	var paused: Boolean = false,
+
 	@Column(name = "created_at", nullable = false, updatable = false)
 	val createdAt: Instant = Instant.now(),
 

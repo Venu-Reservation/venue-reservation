@@ -44,6 +44,14 @@ class ReservationRepository(private val jdbc: JdbcTemplate) {
 		now.toDb(),
 	)
 
+	fun hasBlockingEndingAfter(venueId: Long, now: Instant): Boolean = jdbc.queryForObject(
+		"select exists (select 1 from reservations where venue_id = ? and upper(period) > ? and $BLOCKING)",
+		Boolean::class.java,
+		venueId,
+		now.toDb(),
+		now.toDb(),
+	)!!
+
 	/**
 	 * Inserts a PENDING hold. Throws if it overlaps another active reservation
 	 * (SQLState 23P01 from the exclusion constraint).

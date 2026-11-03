@@ -60,7 +60,7 @@ class SearchService(
 				Slot(
 					startTime = slot.start,
 					localTime = slot.start.atZone(zone).toLocalTime().toString(),
-					available = slot.start > now && booked.none { it.overlaps(slot) },
+					available = !venue.paused && slot.start > now && booked.none { it.overlaps(slot) },
 				)
 			},
 		)

@@ -104,4 +104,59 @@ class VenueAndSearchTest : IntegrationTest() {
 		val unavailable = slots.filter { !it.get("available").asBoolean() }.map { it.get("localTime").asString() }
 		assertEquals(listOf("18:00", "19:00"), unavailable)
 	}
+
+	@Test
+	fun `a paused venue leaves search and takes no bookings until resumed`() {
+		val host = signUp("Host")
+		val guest = signUp("Guest")
+		val venueId = createVenue(host)
+		val booking = slot(daysAhead = 3, hour = 18)
+
+		assertEquals(403, post("/api/v1/venues/$venueId/pause", "", guest).status)
+		val paused = post("/api/v1/venues/$venueId/pause", "", host)
+		assertTrue(paused.field("paused").asBoolean())
+
+		assertEquals(0, get("/api/v1/venues/search?city=New York").field("totalItems").asInt())
+		assertTrue(get("/api/v1/venues/$venueId").field("paused").asBoolean(), "still visible by id")
+		val date = booking.start.atZone(java.time.ZoneId.of(NEW_YORK)).toLocalDate()
+		val slots = get("/api/v1/venues/$venueId/availability?date=$date").field("slots")
+		assertTrue(slots.none { it.get("available").asBoolean() })
+
+		val refused = reserve(guest, venueId, booking)
+		assertEquals(409, refused.status)
+		assertEquals("VENUE_NOT_ACCEPTING_BOOKINGS", refused.field("code").asString())
+
+		put("/api/v1/venues/$venueId", venueJson(name = "Renamed"), host)
+		assertTrue(get("/api/v1/venues/$venueId").field("paused").asBoolean(), "PUT doesn't change paused")
+
+		post("/api/v1/venues/$venueId/resume", "", host)
+		assertEquals(201, reserve(guest, venueId, booking).status)
+	}
+
+	@Test
+	fun `a venue with upcoming bookings can't be deleted, one with only past bookings can`() {
+		val host = signUp("Host")
+		val guest = signUp("Guest")
+		val venueId = createVenue(host)
+		reserve(guest, venueId, slot(daysAhead = 3, hour = 18, hours = 2))
+
+		val blocked = delete("/api/v1/venues/$venueId", host)
+		assertEquals(409, blocked.status)
+		assertEquals("VENUE_HAS_BOOKINGS", blocked.field("code").asString())
+
+		// Once the booking has ended, only history is left.
+		clock.advance(java.time.Duration.ofDays(4))
+		assertEquals(204, delete("/api/v1/venues/$venueId", host).status)
+	}
+
+	@Test
+	fun `an expired hold doesn't block deleting`() {
+		val host = signUp("Host")
+		val guest = signUp("Guest")
+		val venueId = createVenue(host)
+		reserve(guest, venueId, slot(daysAhead = 3, hour = 18))
+
+		clock.advance(java.time.Duration.ofMinutes(11))
+		assertEquals(204, delete("/api/v1/venues/$venueId", host).status)
+	}
 }

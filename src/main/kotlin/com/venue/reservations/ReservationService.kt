@@ -28,6 +28,9 @@ interface ReservationService {
 	/** Blocking reservation periods for one venue that overlap [range]. */
 	fun bookedPeriods(venueId: Long, range: TimeRange): List<TimeRange>
 
+	/** True if the venue has a blocking reservation that hasn't ended yet. */
+	fun hasUpcomingBookings(venueId: Long): Boolean
+
 	/**
 	 * Validates and books [startTime, endTime) at a venue for [userId] as a PENDING
 	 * hold that expires in 10 minutes. Throws a 409 RESERVATION_CONFLICT if the time is taken.

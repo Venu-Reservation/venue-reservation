@@ -38,6 +38,10 @@ class DefaultReservationService(
 	override fun bookedPeriods(venueId: Long, range: TimeRange): List<TimeRange> =
 		reservations.bookedPeriods(venueId, range, Instant.now(clock))
 
+	@Transactional(readOnly = true)
+	override fun hasUpcomingBookings(venueId: Long): Boolean =
+		reservations.hasBlockingEndingAfter(venueId, Instant.now(clock))
+
 	// Not @Transactional: each attempt below runs in its own transaction.
 	override fun reserve(userId: Long, venueId: Long?, startTime: Instant?, endTime: Instant?): ReservationResponse {
 		validate(venueId != null && startTime != null && endTime != null) { "venueId, startTime and endTime are required." }
@@ -56,7 +60,11 @@ class DefaultReservationService(
 
 	private fun reserveOnce(userId: Long, venueId: Long, range: TimeRange): ReservationResponse {
 		val now = Instant.now(clock)
-		val venue = venues.getBookingInfo(venueId)
+		// The shared lock keeps the venue from being deleted until this booking commits.
+		val venue = venues.getBookingInfoLocked(venueId)
+		if (venue.paused) {
+			throw ConflictException("VENUE_NOT_ACCEPTING_BOOKINGS", "This venue isn't taking bookings right now.")
+		}
 		val hours = validateBooking(range, ZoneId.of(venue.timezone), now)
 		val totalPrice = venue.hourlyRate.multiply(BigDecimal.valueOf(hours))
 

@@ -71,6 +71,19 @@ class DefaultVenueService(
 		findOwned(userId, venueId).deletedAt = Instant.now(clock)
 	}
 
+	@Transactional
+	override fun setPaused(userId: Long, venueId: Long, paused: Boolean): VenueResponse {
+		val venue = findOwned(userId, venueId)
+		venue.paused = paused
+		return venue.toResponse()
+	}
+
+	@Transactional
+	override fun lockOwnedForDelete(userId: Long, venueId: Long) {
+		val venue = venues.findActiveForUpdate(venueId) ?: throw notFound()
+		if (venue.hostId != userId) throw notYours()
+	}
+
 	@Transactional(readOnly = true)
 	override fun get(venueId: Long): VenueResponse = findActive(venueId).toResponse()
 
@@ -83,7 +96,7 @@ class DefaultVenueService(
 		val pageable = PageRequest.of(page, size, Sort.by("createdAt", "id"))
 		// "not in" an empty list isn't valid SQL everywhere, so skip it when nothing is excluded.
 		val result = if (excludedIds.isEmpty()) {
-			venues.findByCityIgnoreCaseAndDeletedAtIsNull(city, pageable)
+			venues.findByCityIgnoreCaseAndDeletedAtIsNullAndPausedFalse(city, pageable)
 		} else {
 			venues.searchExcluding(city, excludedIds, pageable)
 		}
@@ -97,10 +110,12 @@ class DefaultVenueService(
 	}
 
 	@Transactional(readOnly = true)
-	override fun getBookingInfo(venueId: Long): VenueBookingInfo {
-		val venue = findActive(venueId)
-		return VenueBookingInfo(venue.id!!, venue.hostId, venue.timezone, venue.hourlyRate)
-	}
+	override fun getBookingInfo(venueId: Long): VenueBookingInfo = findActive(venueId).toBookingInfo()
+
+	// Not read-only: Postgres refuses "for share" in a read-only transaction.
+	@Transactional
+	override fun getBookingInfoLocked(venueId: Long): VenueBookingInfo =
+		(venues.findActiveForShare(venueId) ?: throw notFound()).toBookingInfo()
 
 	@Transactional(readOnly = true)
 	override fun findSummaries(venueIds: Collection<Long>): Map<Long, VenueSummary> =
@@ -113,14 +128,19 @@ class DefaultVenueService(
 	override fun findIdsHostedBy(hostId: Long): List<Long> =
 		venues.findByHostIdAndDeletedAtIsNullOrderByCreatedAtDesc(hostId).map { it.id!! }
 
-	private fun findActive(venueId: Long): Venue =
-		venues.findByIdAndDeletedAtIsNull(venueId) ?: throw NotFoundException("Venue not found.")
+	private fun findActive(venueId: Long): Venue = venues.findByIdAndDeletedAtIsNull(venueId) ?: throw notFound()
 
 	private fun findOwned(userId: Long, venueId: Long): Venue {
 		val venue = findActive(venueId)
-		if (venue.hostId != userId) throw ForbiddenException("Only the venue's host can change it.")
+		if (venue.hostId != userId) throw notYours()
 		return venue
 	}
+
+	private fun notFound() = NotFoundException("Venue not found.")
+
+	private fun notYours() = ForbiddenException("Only the venue's host can change it.")
+
+	private fun Venue.toBookingInfo() = VenueBookingInfo(id!!, hostId, timezone, hourlyRate, paused)
 
 	private fun Venue.toResponse() = VenueResponse(
 		id = id!!,
@@ -139,6 +159,7 @@ class DefaultVenueService(
 		hourlyRate = hourlyRate,
 		thumbnailUrl = thumbnailUrl,
 		images = images.map { VenueImageResponse(it.id!!, it.imageUrl, it.displayOrder) },
+		paused = paused,
 		createdAt = createdAt,
 	)
 }

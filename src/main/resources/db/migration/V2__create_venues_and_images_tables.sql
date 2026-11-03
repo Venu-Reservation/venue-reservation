@@ -18,6 +18,8 @@ CREATE TABLE venues (
     longitude NUMERIC(9, 6),
     hourly_rate DECIMAL(10, 2) NOT NULL,
     thumbnail_url VARCHAR(500),
+    -- The host stopped new bookings; existing ones stay.
+    paused BOOLEAN NOT NULL DEFAULT FALSE,
     created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
     -- Soft delete: every read excludes rows with deleted_at set.
     deleted_at TIMESTAMP WITH TIME ZONE,
@@ -35,6 +37,6 @@ CREATE TABLE venue_images (
 );
 
 CREATE INDEX idx_venues_host_id ON venues(host_id);
--- Search looks venues up by city, case-insensitively, among active ones.
-CREATE INDEX idx_venues_active_city ON venues (lower(city)) WHERE deleted_at IS NULL;
+-- Search looks venues up by city, case-insensitively, among active, unpaused ones.
+CREATE INDEX idx_venues_active_city ON venues (lower(city)) WHERE deleted_at IS NULL AND NOT paused;
 CREATE INDEX idx_venue_images_venue_id ON venue_images(venue_id);

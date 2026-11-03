@@ -15,8 +15,20 @@ interface VenueService {
 	/** Owner only: 404 if missing or deleted, 403 for anyone else. Validates like [create]. */
 	fun update(userId: Long, venueId: Long, request: VenueRequest): VenueResponse
 
-	/** Soft-deletes. Owner only, like [update]. */
+	/**
+	 * Soft-deletes. Owner only, like [update]. Call through VenueDeletionService,
+	 * which first checks for upcoming bookings.
+	 */
 	fun delete(userId: Long, venueId: Long)
+
+	/** Stops (or with [paused] false, restarts) new bookings. Owner only, like [update]. */
+	fun setPaused(userId: Long, venueId: Long, paused: Boolean): VenueResponse
+
+	/**
+	 * Locks the venue against bookings until the transaction ends, after the same
+	 * 404 and 403 checks as [update]. For deleting it safely.
+	 */
+	fun lockOwnedForDelete(userId: Long, venueId: Long)
 
 	/** Throws a 404 if missing or deleted. */
 	fun get(venueId: Long): VenueResponse
@@ -28,6 +40,12 @@ interface VenueService {
 
 	/** What booking a venue needs. Throws a 404 if missing or deleted. */
 	fun getBookingInfo(venueId: Long): VenueBookingInfo
+
+	/**
+	 * Like [getBookingInfo], and holds a shared lock until the transaction ends,
+	 * so the venue can't be deleted while a booking is being made.
+	 */
+	fun getBookingInfoLocked(venueId: Long): VenueBookingInfo
 
 	/** Short descriptions for showing reservations, including deleted venues. */
 	fun findSummaries(venueIds: Collection<Long>): Map<Long, VenueSummary>
@@ -71,12 +89,19 @@ data class VenueResponse(
 	val hourlyRate: BigDecimal,
 	val thumbnailUrl: String?,
 	val images: List<VenueImageResponse>,
+	val paused: Boolean,
 	val createdAt: Instant,
 )
 
 data class VenueImageResponse(val id: Long, val imageUrl: String, val displayOrder: Int)
 
-data class VenueBookingInfo(val id: Long, val hostId: Long, val timezone: String, val hourlyRate: BigDecimal)
+data class VenueBookingInfo(
+	val id: Long,
+	val hostId: Long,
+	val timezone: String,
+	val hourlyRate: BigDecimal,
+	val paused: Boolean,
+)
 
 data class VenueSummary(
 	val id: Long,

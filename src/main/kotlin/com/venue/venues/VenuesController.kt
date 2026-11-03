@@ -16,7 +16,10 @@ import org.springframework.web.bind.annotation.RestController
 
 @RestController
 @RequestMapping("/api/v1/venues")
-class VenuesController(private val venues: VenueService) {
+class VenuesController(
+	private val venues: VenueService,
+	private val deletion: VenueDeletionService,
+) {
 
 	/** Any signed-in user can list a venue and becomes its host. */
 	@PostMapping
@@ -38,7 +41,16 @@ class VenuesController(private val venues: VenueService) {
 		@RequestBody request: VenueRequest,
 	): VenueResponse = venues.update(jwt.userId(), id, request)
 
+	/** Stops new bookings; existing ones stay. */
+	@PostMapping("/{id}/pause")
+	fun pause(@AuthenticationPrincipal jwt: Jwt, @PathVariable id: Long): VenueResponse =
+		venues.setPaused(jwt.userId(), id, paused = true)
+
+	@PostMapping("/{id}/resume")
+	fun resume(@AuthenticationPrincipal jwt: Jwt, @PathVariable id: Long): VenueResponse =
+		venues.setPaused(jwt.userId(), id, paused = false)
+
 	@DeleteMapping("/{id}")
 	@ResponseStatus(HttpStatus.NO_CONTENT)
-	fun delete(@AuthenticationPrincipal jwt: Jwt, @PathVariable id: Long) = venues.delete(jwt.userId(), id)
+	fun delete(@AuthenticationPrincipal jwt: Jwt, @PathVariable id: Long) = deletion.delete(jwt.userId(), id)
 }

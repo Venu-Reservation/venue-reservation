@@ -36,6 +36,8 @@ Agreed while building (Oct and Nov 2026). Each one overrides anything older that
 
 - Users: one `users` table, no roles. Passwords are stored only as an Argon2id hash. Emails are stored lowercased and unique case-insensitively.
 - Venues: owned by the user in `host_id`, soft-deleted via `deleted_at`; all reads exclude deleted venues. Each has an IANA `timezone`, derived from its city. Coordinates are both set or both null.
+- A host can pause a venue to stop new bookings: a paused venue is left out of search, shows no available slots, and rejects new bookings, while existing bookings stay. Resuming undoes it.
+- A venue can't be deleted while it has upcoming bookings (CONFIRMED or PENDING within its hold, not ended yet). Bookings are never deleted. To remove a venue, pause it, let its bookings finish, then delete it.
 - Reservation statuses: PENDING, CONFIRMED, CANCELLED, EXPIRED.
 - A reservation starts PENDING with `expires_at = now + 10 minutes`, waiting on payment.
 - Payment success within the hold confirms it (CONFIRMED, `expires_at` cleared). If the hold already expired, do NOT confirm: flag the payment for refund. A wrong amount, a second payment, or a payment for a cancelled booking is also flagged for refund.
@@ -68,6 +70,8 @@ Every error is `{ "code": "...", "message": "..." }`, where `message` is safe to
 | 409 | `EMAIL_ALREADY_REGISTERED` | Signup with a taken email |
 | 409 | `RESERVATION_CONFLICT` | The hours overlap an active booking |
 | 409 | `RESERVATION_NOT_CANCELLABLE` | Cancelling an expired or already started booking |
+| 409 | `VENUE_NOT_ACCEPTING_BOOKINGS` | Booking a paused venue |
+| 409 | `VENUE_HAS_BOOKINGS` | Deleting a venue that has upcoming bookings |
 | 429 | `TOO_MANY_REQUESTS` | Too many sign-in or sign-up attempts; the `Retry-After` header says how many seconds to wait |
 | 500 | `INTERNAL_ERROR` | Unexpected server error |
 
@@ -118,20 +122,21 @@ Venue response:
   "hourlyRate": 320.00,
   "thumbnailUrl": "https://...",
   "images": [{ "id": 1, "imageUrl": "https://...", "displayOrder": 0 }],
+  "paused": false,
   "createdAt": "2026-09-01T14:00:00Z"
 }
 ```
 
-`sizeSqft`, `addressLine2`, `thumbnailUrl`, `latitude` and `longitude` may be null; `images` may be empty and is sorted by `displayOrder`. `state` and `timezone` come from the city.
+`sizeSqft`, `addressLine2`, `thumbnailUrl`, `latitude` and `longitude` may be null; `images` may be empty and is sorted by `displayOrder`. `state` and `timezone` come from the city. `paused` is true while the host has stopped new bookings.
 
-- `GET /venues/search?city=&startTime=&endTime=&page=0&size=20` (public): active venues in the city (case-insensitive). With `startTime` and `endTime` (send both or neither), only venues free for that whole half-open range. `size` is 1 to 100. Returns:
+- `GET /venues/search?city=&startTime=&endTime=&page=0&size=20` (public): active, unpaused venues in the city (case-insensitive). With `startTime` and `endTime` (send both or neither), only venues free for that whole half-open range. `size` is 1 to 100. Returns:
 
   ```json
   { "items": [ /* venues */ ], "page": 0, "size": 20, "totalItems": 3, "totalPages": 1 }
   ```
 
-- `GET /venues/{id}` (public): one venue, or 404.
-- `GET /venues/{id}/availability?date=YYYY-MM-DD` (public): the date is in the venue's zone. Returns one slot per bookable start hour (06:00 to 23:00 venue time); a slot is available if that hour is in the future and not booked:
+- `GET /venues/{id}` (public): one venue, or 404. Paused venues are still returned (with `paused: true`), so guests with a booking can see them.
+- `GET /venues/{id}/availability?date=YYYY-MM-DD` (public): the date is in the venue's zone. Returns one slot per bookable start hour (06:00 to 23:00 venue time); a slot is available if that hour is in the future, not booked, and the venue isn't paused:
 
   ```json
   {
@@ -153,8 +158,9 @@ Venue response:
   ```
 
   No `hostId`: the backend takes it from the token. No `state`, `timezone` or coordinates either: `state` and `timezone` come from the city (case-insensitive, one of the supported cities), and coordinates from geocoding later. The first image URL becomes `thumbnailUrl`.
-- `PUT /venues/{id}` (host only): the same body; replaces every field, including the photos.
-- `DELETE /venues/{id}` (host only): soft delete, 204.
+- `PUT /venues/{id}` (host only): the same body; replaces every field, including the photos. It doesn't change `paused`.
+- `POST /venues/{id}/pause` and `POST /venues/{id}/resume` (host only): stop or restart new bookings, and return the venue. Repeating either is fine.
+- `DELETE /venues/{id}` (host only): soft delete, 204. 409 `VENUE_HAS_BOOKINGS` while it has upcoming bookings.
 
 ### Reservations
 
@@ -178,7 +184,7 @@ Reservation response. Times are UTC; show them in `venue.timezone`:
 
 `expiresAt` is set only while the status is PENDING: it's when the hold lapses, for the checkout countdown.
 
-- `POST /reservations` with `{ venueId, startTime, endTime }`: creates a PENDING hold, 201. Checked in the venue's zone: in the future, on the hour, starting 06:00 to 23:00, 1 to 12 whole hours. Overlapping an active booking is 409 `RESERVATION_CONFLICT`.
+- `POST /reservations` with `{ venueId, startTime, endTime }`: creates a PENDING hold, 201. Checked in the venue's zone: in the future, on the hour, starting 06:00 to 23:00, 1 to 12 whole hours. Overlapping an active booking is 409 `RESERVATION_CONFLICT`; a paused venue is 409 `VENUE_NOT_ACCEPTING_BOOKINGS`.
 - `GET /reservations?when=upcoming|past&as=host`: your bookings. `when=upcoming` means not over yet and still active (CONFIRMED, or PENDING within its hold), soonest first; `when=past` is everything else (finished, cancelled, expired), newest first; without `when`, all of them, newest first. `as=host` lists bookings on venues you host instead.
 - `GET /reservations/{id}`: the guest or the venue's host; anyone else gets 403.
 - `DELETE /reservations/{id}`: cancels (guest only) and returns the updated reservation.
@@ -221,7 +227,7 @@ A json-server mock lives in the web repo (`mock/`) and serves the same `/api/v1`
 - Run it from the web repo: `npm run mock:api`. Base URL `http://localhost:3001/api/v1`. The iOS Simulator reaches it at that same address.
 - Seed data: `mock/db.json`. Each start copies it to the gitignored `mock/db.runtime.json` and serves the copy, so anything created resets on restart.
 - Faked in `mock/middleware.cjs`: login, signup (new users kept in memory), `GET /users`, search (returns the page object), `GET /venues` (your listings) and `POST /venues` with a token check. Tokens are `mock-token-<userId>`, not JWTs.
-- Not faked: availability (search ignores `startTime`/`endTime` and treats every venue as free, and there's no availability endpoint), `PUT /users`, venue edits and deletes, reservations and payments. Use the real backend for those. json-server's 404 body is `{}`, not `{ code, message }`.
+- Not faked: availability (search ignores `startTime`/`endTime` and treats every venue as free, and there's no availability endpoint), `PUT /users`, venue edits, deletes, pause and resume, reservations and payments. Use the real backend for those. json-server's 404 body is `{}`, not `{ code, message }`.
 - Seed data holds only fields the real API returns.
 
 ## Rules for clients (web and iOS)
@@ -256,7 +262,8 @@ To decide:
 - Search sends the ids of every booked venue, in every city, back to the venues query as a `not in` list. When search grows, replace it with one read-only query in `search` that uses `not exists` against reservations (an exception to the module rule for reads).
 - A venue `description` field, fees (cleaning and service), and a cancellation policy (today a guest can cancel any time before the start).
 - Whether hosts can cancel guests' bookings, and whether hosts can book their own venues (today they can't cancel and can book).
-- What happens to future bookings when a venue is deleted (today they stay).
+- Restoring a deleted venue (e.g. `POST /venues/{id}/restore`), for hosts who delete one by mistake.
+- Calendar blackouts: hosts block specific times (holidays, private events). One option is a host-made row in `reservations` with its own status, so the exclusion constraint prevents overlaps for free.
 - Whether My bookings shows cancelled future bookings under past (today `when=past` includes them).
 - Photo upload storage, email changes, and token refresh (short access tokens plus rotating refresh tokens). Add `iss` and `aud` claims to tokens with the refresh work.
 - Sending email, through a provider (e.g. Amazon SES, Postmark, Resend) with SPF, DKIM and DMARC on our domain, and Mailpit in docker-compose for local dev. It unlocks:
