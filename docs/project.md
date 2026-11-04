@@ -328,4 +328,4 @@ To decide:
 
 Clients:
 
-- The web app needs to drop the token on any 401 and build Checkout, Confirmation, My bookings and the Host portal against the endpoints above.
+- The web app needs Checkout, Confirmation, My bookings and the Host portal, against the endpoints above. (It already signs out on any 401 where a token was sent.)
