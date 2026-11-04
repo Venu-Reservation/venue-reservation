@@ -1,10 +1,12 @@
 # Reservation
 
-Spring Boot app (Kotlin) that talks to PostgreSQL, Redis, and Kafka on your machine. This guide is for a new developer on a Mac, from a working `java` command through IntelliJ and the local Docker services.
+The Reserved backend: a Kotlin Spring Boot API on PostgreSQL. It serves the web and iOS apps at `http://localhost:8080/api/v1`. The API contract, product rules and decisions are in [docs/project.md](docs/project.md), which is shared with those apps.
 
-The project compiles with **JDK 25** (`build.gradle` sets the Java toolchain to 25). An older JDK already on the machine, such as 21, will not build this app.
+This guide is for a new developer on a Mac, from a working `java` command through IntelliJ, the local database, sample data and tests.
 
-Start the Docker containers before you run the app. `application.properties` already points at those containers, so there is nothing extra to configure once they are up.
+The project compiles with **JDK 25** (`build.gradle.kts` sets the Java toolchain to 25). An older JDK already on the machine, such as 21, will not build this app.
+
+Start the Docker container before you run the app. The `dev` profile, which is the default, already points at it, so there is nothing extra to configure once it's up.
 
 ## 1. Install Homebrew
 
@@ -69,15 +71,13 @@ echo "$JAVA_HOME"
 
 `java -version` should report version **25**. `JAVA_HOME` should end in `openjdk-25.jdk/Contents/Home`.
 
-## 3. Install Docker and start the containers
+## 3. Install Docker and start the database
 
-The app connects to three services on localhost. The credentials and ports in `docker-compose.yaml` match `src/main/resources/application.properties`.
+The app needs one service on localhost. The credentials and port in `docker-compose.yaml` match `src/main/resources/application-dev.properties`.
 
-| Service    | Container       | Host address     | Login                          |
-|------------|-----------------|------------------|--------------------------------|
-| PostgreSQL | `local-postgres`| `localhost:5432` | database `appdb`, user `appuser`, password `secretpassword` |
-| Redis      | `local-redis`   | `localhost:6379` | no password                    |
-| Kafka      | `local-kafka`   | `localhost:9092` | no auth                        |
+| Service    | Container        | Host address     | Login |
+|------------|------------------|------------------|-------|
+| PostgreSQL | `reserved-postgres` | `localhost:5432` | database `appdb`, user `appuser`, password `secretpassword` |
 
 Install and launch Docker Desktop:
 
@@ -89,34 +89,28 @@ open -a Docker
 Wait until the whale menu icon says Docker is running. Then, from the project root (the folder that contains `docker-compose.yaml`):
 
 ```bash
-docker compose up -d
+docker compose up -d --remove-orphans
 ```
 
-The first run downloads the Postgres, Redis, and Kafka images. Kafka can take half a minute before it accepts connections. Check that all three containers are running:
+`--remove-orphans` also removes the Redis and Kafka containers from earlier versions of this project, which are no longer used. Check that Postgres is running and answers:
 
 ```bash
 docker compose ps
+docker exec reserved-postgres pg_isready -U appuser -d appdb
 ```
 
-You want `local-postgres`, `local-redis`, and `local-kafka` each in a running state. Then confirm Postgres and Redis answer:
+`pg_isready` should say it is accepting connections.
+
+Leave the container running while you work. The data lives in memory (`tmpfs`), so **stopping the container deletes it**. That's on purpose: every new container is an empty database, and the app's next start creates the tables and loads fresh seed data, with booking dates relative to that day. Restarting only the app keeps the data.
 
 ```bash
-docker exec local-postgres pg_isready -U appuser -d appdb
-docker exec local-redis redis-cli ping
+docker compose down     # stop and remove the container (the data goes with it)
+docker compose up -d    # start an empty database; then start the app to fill it
 ```
 
-`pg_isready` should say it is accepting connections. Redis should reply `PONG`.
+If the database restarts while the app is running, restart the app too, so it creates the tables again.
 
-Leave these containers running while you work. Data is stored in Docker volumes, so it survives a restart.
-
-```bash
-docker compose stop    # stop the containers, keep the data
-docker compose start   # start them again
-docker compose down    # remove the containers, keep the data
-docker compose down -v # remove the containers and delete the data
-```
-
-Port `5432`, `6379`, or `9092` already in use means a local Postgres, Redis, or Kafka is bound to that port. Quit that process, or stop its app, then run `docker compose up -d` again.
+Port `5432` already in use means a local Postgres is bound to that port. Quit it, then run `docker compose up -d` again.
 
 ## 4. Set up IntelliJ IDEA
 
@@ -127,7 +121,7 @@ brew install --cask intellij-idea-ce
 open -a "IntelliJ IDEA CE"
 ```
 
-1. On the welcome screen, choose **Open** and select this project folder (the one that contains `build.gradle` and `settings.gradle`). Trust the project when asked.
+1. On the welcome screen, choose **Open** and select this project folder (the one that contains `build.gradle.kts` and `settings.gradle.kts`). Trust the project when asked.
 2. If IntelliJ asks how to import it, open it as a **Gradle** project and use the **Gradle wrapper** (`./gradlew`), which is already in the repo. The wrapper downloads Gradle 9.8.1 on the first sync.
 3. Set the project JDK to 25.
    - **File → Project Structure…** (⌘;) → **Project**.
@@ -143,9 +137,9 @@ open -a "IntelliJ IDEA CE"
 
 ## 5. Run the app
 
-Containers from step 3 need to be up first. The app listens on **http://localhost:8080**.
+The container from step 3 needs to be up first. The app listens on **http://localhost:8080**.
 
-**From IntelliJ:** open `src/main/kotlin/com/venue/reservation/ReservationApplication.kt` and use the gutter icon next to `fun main`. Choose **Run 'ReservationApplicationKt'**.
+**From IntelliJ:** open `src/main/kotlin/com/venue/VenueApplication.kt` and use the gutter icon next to `fun main`. Choose **Run 'VenueApplicationKt'**.
 
 **From the terminal,** in the project root:
 
@@ -156,25 +150,80 @@ Containers from step 3 need to be up first. The app listens on **http://localhos
 The first run downloads dependencies. When startup succeeds, the log includes a line like:
 
 ```text
-Started ReservationApplication in ... seconds
+Started VenueApplicationKt in ... seconds
 ```
 
-Confirm the app can reach the containers:
+Confirm the app is up and can reach the database:
 
 ```bash
 curl http://localhost:8080/actuator/health
 ```
 
-A healthy process returns HTTP 200 and JSON whose top-level `status` is `UP`. The `components` object includes `db` (PostgreSQL), `redis`, and `kafka`, each with `"status": "UP"`. If one of those services is down, its status is `DOWN` and the overall status is `DOWN` as well.
+A healthy process returns HTTP 200 with `{"status":"UP"}`.
 
 Stop a terminal run with Ctrl+C. Stop an IntelliJ run with the red square in the Run tool window.
+
+## 6. Sample data and test users
+
+On startup, Flyway creates or updates the schema (`src/main/resources/db/migration`). The `dev` profile also loads sample data from `src/main/resources/db/dev/R__dev_seed.sql`. It's the same data as the web app's mock API, so both behave the same.
+
+| User | Email | Password | Has listings |
+|---|---|---|---|
+| Alex Morgan | alex@dev.local | devpass123 | No. Has upcoming, past and cancelled bookings |
+| Jamie Lee | jamie@dev.local | devpass123 | Yes, the 4 New York venues |
+| Sam Rivera | sam@dev.local | devpass123 | Yes, the Chicago venue |
+
+Bookings are dated relative to the day the seed runs. For example, Alex has the Atrium booked tomorrow from 6 to 10 PM New York time, so that venue doesn't show in a search for that time. To reload fresh data, restart the database and then the app:
+
+```bash
+docker compose down
+docker compose up -d
+./gradlew bootRun
+```
+
+Try it:
+
+```bash
+curl -s -X POST localhost:8080/api/v1/auth/login -H 'Content-Type: application/json' \
+  -d '{"email":"alex@dev.local","password":"devpass123"}'
+```
+
+The response has a `token`. Send it as `Authorization: Bearer <token>` to calls that need sign-in, such as `GET /api/v1/reservations`.
+
+In the `dev` profile, `POST /api/v1/reservations/{id}/pay` pays for your own pending reservation, so you can finish a booking without a payment provider.
+
+## 7. Run the tests
+
+```bash
+./gradlew build
+```
+
+This compiles and runs the tests. Tests start their own throwaway Postgres in Docker (Testcontainers), so Docker Desktop must be running, but they don't touch your local database or its data.
+
+## The API
+
+Everything is under `/api/v1`, and errors are always `{ "code": "...", "message": "..." }`. The full contract, with request and response examples, is in [docs/project.md](docs/project.md). In short:
+
+| Area | Endpoints |
+|---|---|
+| Auth | `POST /auth/signup`, `POST /auth/login` |
+| Your profile | `GET /users`, `PUT /users` |
+| Venues | `GET /venues/search`, `GET /venues/{id}`, `GET /venues/{id}/availability`, `GET /venues` (yours), `POST /venues`, `PUT /venues/{id}`, `DELETE /venues/{id}` |
+| Reservations | `POST /reservations`, `GET /reservations` (yours, or `?as=host`), `GET /reservations/{id}`, `DELETE /reservations/{id}` (cancel) |
+| Payments | `POST /payments/webhook`, and `POST /reservations/{id}/pay` in dev only |
+
+Secrets come from environment variables outside the `dev` profile: `DB_PASSWORD` (plus optional `DB_URL` and `DB_USERNAME`), `JWT_SECRET` (at least 32 characters) and `PAYMENT_WEBHOOK_SECRET`. Set `SPRING_PROFILES_ACTIVE` to something other than `dev` in real environments, so the dev data and the dev-only pay endpoint aren't loaded.
 
 ## If something fails
 
 **`java: command not found`, or `java -version` is not 25.** Open a new terminal tab after editing `~/.zshrc`. Confirm the `PATH` line is above any other JDK, then run `which java`. It should print a path under `openjdk@25`.
 
-**Gradle says it cannot find a Java installation for language version 25.** The toolchain in `build.gradle` requires a local JDK 25. Repeat the symlink in step 2, set **Gradle JVM** to that JDK in IntelliJ, and sync Gradle again.
+**Gradle says it cannot find a Java installation for language version 25.** The toolchain in `build.gradle.kts` requires a local JDK 25. Repeat the symlink in step 2, set **Gradle JVM** to that JDK in IntelliJ, and sync Gradle again.
 
-**The app exits while connecting to `localhost:5432`, `6379`, or `9092`.** Docker Desktop is not running, or the containers are not up. Run `docker compose ps` in the project root and start anything that is missing with `docker compose up -d`. Give Kafka a few more seconds, then run the app again.
+**The app exits while connecting to `localhost:5432`.** Docker Desktop is not running, or the container is not up. Run `docker compose ps` in the project root and start it with `docker compose up -d`.
 
-**A container exits immediately or the port is already allocated.** Run `docker compose logs` and look for "address already in use". Free that port, then `docker compose up -d` again.
+**Tests fail with "Could not find a valid Docker environment".** Docker Desktop isn't running. Start it and run `./gradlew build` again.
+
+**The container exits immediately or the port is already allocated.** Run `docker compose logs` and look for "address already in use". Free that port, then `docker compose up -d` again.
+
+**Flyway reports a checksum mismatch.** A migration that already ran was edited. Never change an applied migration; add a new one instead. On your own machine, `docker compose down && docker compose up -d` resets the database.
