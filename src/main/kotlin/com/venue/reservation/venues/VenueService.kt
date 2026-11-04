@@ -22,6 +22,6 @@ class VenueService {
     )
 
     fun deleteVenueStub(id: Long): Map<String, String> = mapOf(
-        "message" to "Venue deleted stub"
+        "message" to "Venue deleted stub "
     )
 }
