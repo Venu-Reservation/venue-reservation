@@ -328,4 +328,4 @@ To decide:
 
 Clients:
 
-- The web app needs Checkout, Confirmation, My bookings and the Host portal, against the endpoints above. (It already signs out on any 401 where a token was sent.)
+- The web app has every screen in its design (Nov 3, 2026). It works out the Host portal's month numbers on the device from `GET /reservations?as=host` until there's a host stats endpoint.
