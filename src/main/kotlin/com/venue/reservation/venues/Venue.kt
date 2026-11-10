@@ -8,11 +8,13 @@ import java.util.UUID
     class Venue(
         @Id
         @GeneratedValue(strategy = GenerationType.UUID)
-        var id: UUID = UUID.randomUUID(),
+//        var id: UUID = UUID.randomUUID(),
+        var id: UUID? = null,
+
 
         @Column(nullable = false)
-        var name: String = "",
+        var name: String = "Test Auditorium",
 
         @Column(nullable = false)
-        var timezone: String = ""
+        var timezone: String = "America/New_York"
     )
