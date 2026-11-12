@@ -1,10 +1,7 @@
-package com.venue.reservation.controller
+package com.venue.reservation.venues
 
-
-import com.venue.reservation.venues.VenueService
 import org.springframework.web.bind.annotation.*
 import java.util.UUID
-
 
 @RestController
 @RequestMapping("/api/v1/venues")
