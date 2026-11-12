@@ -13,8 +13,8 @@ import java.util.UUID
 
 
         @Column(nullable = false)
-        var name: String = "Test Auditorium",
+        var name: String,
 
         @Column(nullable = false)
-        var timezone: String = "America/New_York"
+        var timezone: String
     )
