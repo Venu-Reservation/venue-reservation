@@ -50,16 +50,16 @@ publishing), **Planned** (written later, adjusted to how the published ones went
 | 10 | [Kotlin basics: values, types and "maybe empty"](10-kotlin-basics.md) | Understand | Done |
 | 11 | [Kotlin classes, data classes and functions](11-kotlin-classes-and-functions.md) | Understand | Done |
 | 12 | [Remove Redis and Kafka](12-remove-redis-and-kafka.md) | Build | Published |
-| 13 | [Write the build file in Kotlin](13-build-file-in-kotlin.md) | Build | Draft |
-| 14 | [Rename the package to `com.venue`](14-rename-the-package.md) | Build | Draft |
-| 15 | [Keep passwords out of the code](15-passwords-out-of-the-code.md) | Build | Draft |
-| 16 | [A database that starts fresh each time](16-a-fresh-database-each-time.md) | Build | Draft |
+| 13 | [Write the build file in Kotlin](13-build-file-in-kotlin.md) | Build | Published |
+| 14 | [Rename the package to `com.venue`](14-rename-the-package.md) | Build | Published |
+| 15 | [Keep passwords out of the code](15-passwords-out-of-the-code.md) | Build | Published |
+| 16 | [A database that starts fresh each time](16-a-fresh-database-each-time.md) | Build | Published |
 
 ### Part 2: The database
 
 | # | Story | Kind | Status |
 |---|---|---|---|
-| 17 | [Tables, rows, ids and basic SQL](17-tables-rows-and-sql.md) | Understand | Draft |
+| 17 | [Tables, rows, ids and basic SQL](17-tables-rows-and-sql.md) | Understand | Published |
 | 18 | Create the users table (a migration) | Build | Planned |
 | 19 | The `User` class and saving users | Build | Planned |
 | 20 | The venues table and the `Venue` class | Build | Planned |
