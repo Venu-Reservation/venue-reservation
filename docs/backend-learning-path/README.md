@@ -38,28 +38,28 @@ coding story makes sense.
 
 ## The stories
 
-Status: **Published** (on the board), **Planned** (written later, adjusted to how the published
-ones went), **Done**.
+Status: **Done**, **Published** (on the board), **Draft** (written, waiting for review before
+publishing), **Planned** (written later, adjusted to how the published ones went).
 
 ### Part 1: Getting comfortable
 
 | # | Story | Kind | Status |
 |---|---|---|---|
-| 8 | [Understand your test pull request](08-understand-your-tests.md) | Build | Published |
-| 9 | [How a request travels through our code](09-how-a-request-travels.md) | Understand | Published |
-| 10 | [Kotlin basics: values, types and "maybe empty"](10-kotlin-basics.md) | Understand | Published |
-| 11 | [Kotlin classes, data classes and functions](11-kotlin-classes-and-functions.md) | Understand | Published |
+| 8 | [Understand your test pull request](08-understand-your-tests.md) | Build | Done |
+| 9 | [How a request travels through our code](09-how-a-request-travels.md) | Understand | Done |
+| 10 | [Kotlin basics: values, types and "maybe empty"](10-kotlin-basics.md) | Understand | Done |
+| 11 | [Kotlin classes, data classes and functions](11-kotlin-classes-and-functions.md) | Understand | Done |
 | 12 | [Remove Redis and Kafka](12-remove-redis-and-kafka.md) | Build | Published |
-| 13 | Write the build file in Kotlin (`build.gradle.kts`) | Build | Planned |
-| 14 | Rename the package to `com.venue` | Build | Planned |
-| 15 | Keep passwords out of the code (environment variables, a "dev" profile) | Build | Planned |
-| 16 | A database that starts fresh each time (Docker Compose) | Build | Planned |
+| 13 | [Write the build file in Kotlin](13-build-file-in-kotlin.md) | Build | Draft |
+| 14 | [Rename the package to `com.venue`](14-rename-the-package.md) | Build | Draft |
+| 15 | [Keep passwords out of the code](15-passwords-out-of-the-code.md) | Build | Draft |
+| 16 | [A database that starts fresh each time](16-a-fresh-database-each-time.md) | Build | Draft |
 
 ### Part 2: The database
 
 | # | Story | Kind | Status |
 |---|---|---|---|
-| 17 | Tables, rows, ids and basic SQL | Understand | Planned |
+| 17 | [Tables, rows, ids and basic SQL](17-tables-rows-and-sql.md) | Understand | Draft |
 | 18 | Create the users table (a migration) | Build | Planned |
 | 19 | The `User` class and saving users | Build | Planned |
 | 20 | The venues table and the `Venue` class | Build | Planned |
