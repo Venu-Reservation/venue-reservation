@@ -1,4 +1,4 @@
-package com.venue.reservation.venues
+package com.venue.venues
 
 import jakarta.persistence.*
 import java.util.UUID
