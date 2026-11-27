@@ -1,11 +1,11 @@
-package com.venue.reservation
+package com.venue
 
 import org.springframework.boot.autoconfigure.SpringBootApplication
 import org.springframework.boot.runApplication
 
 @SpringBootApplication
-class ReservationApplication
+class VenueApplication
 
 fun main(args: Array<String>) {
-	runApplication<ReservationApplication>(*args)
+    runApplication<VenueApplication>(*args)
 }

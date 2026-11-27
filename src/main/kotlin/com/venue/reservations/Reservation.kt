@@ -1,4 +1,4 @@
-package com.venue.reservation.reservations
+package com.venue.reservations
 
 import jakarta.persistence.*
 import java.time.OffsetDateTime
