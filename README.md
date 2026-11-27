@@ -145,7 +145,7 @@ open -a "IntelliJ IDEA CE"
 
 Containers from step 3 need to be up first. The app listens on **http://localhost:8080**.
 
-**From IntelliJ:** open `src/main/kotlin/com/venue/reservation/ReservationApplication.kt` and use the gutter icon next to `fun main`. Choose **Run 'ReservationApplicationKt'**.
+**From IntelliJ:** open `src/main/kotlin/com/venue/VenueApplication.kt` and use the gutter icon next to `fun main`. Choose **Run 'VenueApplicationKt'**.
 
 **From the terminal,** in the project root:
 
@@ -156,7 +156,7 @@ Containers from step 3 need to be up first. The app listens on **http://localhos
 The first run downloads dependencies. When startup succeeds, the log includes a line like:
 
 ```text
-Started ReservationApplication in ... seconds
+Started VenueApplication in ... seconds
 ```
 
 Confirm the app can reach the containers:

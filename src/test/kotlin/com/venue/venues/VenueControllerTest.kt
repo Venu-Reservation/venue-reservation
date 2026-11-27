@@ -1,4 +1,4 @@
-package com.venue.reservation.venues
+package com.venue.venues
 
 import org.junit.jupiter.api.Test
 import org.mockito.BDDMockito.given
